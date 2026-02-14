@@ -1,0 +1,469 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* 
+  Hamro Task - Best Task Management Software in Nepal
+  Modern, Clean, Futuristic Design System
+  Brand Colors: Vibrant Orange (#FF5C00) + Deep Navy (#1E3A7B)
+  All colors in HSL format
+*/
+
+/* Mobile layout variables */
+:root {
+  --mobile-header-height: 56px;
+  --mobile-nav-height: 64px;
+  --mobile-safe-top: env(safe-area-inset-top, 0px);
+  --mobile-safe-bottom: env(safe-area-inset-bottom, 0px);
+  --mobile-content-top: calc(var(--mobile-header-height) + var(--mobile-safe-top));
+  --mobile-content-bottom: calc(var(--mobile-nav-height) + var(--mobile-safe-bottom));
+}
+
+@layer base {
+  :root {
+    /* Base colors - Clean white with subtle warmth */
+    --background: 0 0% 99%;
+    --foreground: 222 47% 11%;
+
+    /* Cards & surfaces - Pure white */
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 11%;
+
+    /* Primary - Hamro Task Orange */
+    --primary: 21 100% 50%;
+    --primary-foreground: 0 0% 100%;
+
+    /* Secondary - Light orange tint */
+    --secondary: 21 100% 97%;
+    --secondary-foreground: 21 100% 35%;
+
+    /* Muted - Neutral gray with slight warmth */
+    --muted: 220 14% 96%;
+    --muted-foreground: 220 9% 46%;
+
+    /* Accent - Hamro Task Navy Blue */
+    --accent: 222 62% 30%;
+    --accent-foreground: 0 0% 100%;
+
+    /* Destructive - Deep red */
+    --destructive: 0 84% 55%;
+    --destructive-foreground: 0 0% 100%;
+
+    /* Borders & inputs */
+    --border: 220 13% 91%;
+    --input: 220 13% 91%;
+    --ring: 21 100% 50%;
+
+    --radius: 0.75rem;
+
+    /* Sidebar - Navy tinted */
+    --sidebar-background: 222 40% 98%;
+    --sidebar-foreground: 222 47% 11%;
+    --sidebar-primary: 21 100% 50%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 222 30% 94%;
+    --sidebar-accent-foreground: 222 62% 30%;
+    --sidebar-border: 220 13% 91%;
+    --sidebar-ring: 21 100% 50%;
+
+    /* Semantic colors */
+    --success: 152 69% 40%;
+    --success-foreground: 0 0% 100%;
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 0%;
+    --info: 222 62% 45%;
+    --info-foreground: 0 0% 100%;
+
+    /* Task priority colors */
+    --priority-low: 220 9% 46%;
+    --priority-medium: 38 92% 50%;
+    --priority-high: 21 100% 50%;
+    --priority-urgent: 0 84% 55%;
+
+    /* Task status colors */
+    --status-todo: 220 14% 50%;
+    --status-in-progress: 21 100% 50%;
+    --status-review: 222 62% 45%;
+    --status-done: 152 69% 40%;
+
+    /* Role badge colors */
+    --role-owner: 21 100% 50%;
+    --role-admin: 222 62% 45%;
+    --role-member: 199 89% 48%;
+    --role-viewer: 220 9% 46%;
+
+    /* Chart colors - Brand palette */
+    --chart-1: 21 100% 50%;
+    --chart-2: 222 62% 45%;
+    --chart-3: 152 69% 40%;
+    --chart-4: 38 92% 50%;
+    --chart-5: 280 68% 55%;
+
+    /* Brand specific */
+    --brand-orange: 21 100% 50%;
+    --brand-navy: 222 62% 30%;
+    --brand-gradient-start: 21 100% 55%;
+    --brand-gradient-end: 21 100% 45%;
+  }
+
+  .dark {
+    /* Dark mode - Deep navy background */
+    --background: 222 47% 6%;
+    --foreground: 210 20% 98%;
+
+    --card: 222 47% 9%;
+    --card-foreground: 210 20% 98%;
+
+    --popover: 222 47% 9%;
+    --popover-foreground: 210 20% 98%;
+
+    /* Primary - Brighter orange in dark mode */
+    --primary: 21 100% 55%;
+    --primary-foreground: 0 0% 100%;
+
+    /* Secondary */
+    --secondary: 222 30% 18%;
+    --secondary-foreground: 21 100% 70%;
+
+    /* Muted */
+    --muted: 222 30% 15%;
+    --muted-foreground: 220 13% 65%;
+
+    /* Accent - Lighter navy */
+    --accent: 222 62% 50%;
+    --accent-foreground: 0 0% 100%;
+
+    /* Destructive */
+    --destructive: 0 70% 50%;
+    --destructive-foreground: 0 0% 100%;
+
+    /* Borders */
+    --border: 222 30% 18%;
+    --input: 222 30% 18%;
+    --ring: 21 100% 55%;
+
+    /* Sidebar */
+    --sidebar-background: 222 47% 7%;
+    --sidebar-foreground: 210 20% 98%;
+    --sidebar-primary: 21 100% 55%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 222 30% 15%;
+    --sidebar-accent-foreground: 210 20% 98%;
+    --sidebar-border: 222 30% 18%;
+    --sidebar-ring: 21 100% 55%;
+
+    /* Semantic colors */
+    --success: 152 69% 45%;
+    --success-foreground: 0 0% 100%;
+    --warning: 38 92% 55%;
+    --warning-foreground: 0 0% 0%;
+    --info: 222 62% 55%;
+    --info-foreground: 0 0% 100%;
+
+    /* Task priority - brighter for dark mode */
+    --priority-low: 220 13% 55%;
+    --priority-medium: 38 92% 55%;
+    --priority-high: 21 100% 55%;
+    --priority-urgent: 0 75% 55%;
+
+    /* Task status */
+    --status-todo: 220 14% 55%;
+    --status-in-progress: 21 100% 55%;
+    --status-review: 222 62% 55%;
+    --status-done: 152 69% 45%;
+
+    /* Role badges */
+    --role-owner: 21 100% 55%;
+    --role-admin: 222 62% 55%;
+    --role-member: 199 89% 55%;
+    --role-viewer: 220 13% 55%;
+
+    /* Charts */
+    --chart-1: 21 100% 55%;
+    --chart-2: 222 62% 55%;
+    --chart-3: 152 69% 45%;
+    --chart-4: 38 92% 55%;
+    --chart-5: 280 68% 60%;
+
+    /* Brand specific */
+    --brand-orange: 21 100% 55%;
+    --brand-navy: 222 62% 50%;
+    --brand-gradient-start: 21 100% 60%;
+    --brand-gradient-end: 21 100% 50%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+
+  /* Smooth scrolling */
+  html {
+    scroll-behavior: smooth;
+  }
+
+  /* Focus visible styles for accessibility */
+  :focus-visible {
+    @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
+  }
+}
+
+/* Custom scrollbar - Modern & Sleek */
+@layer utilities {
+  /* Default scrollbar styling for all elements */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--primary) / 0.3) hsl(var(--muted) / 0.3);
+  }
+
+  *::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  *::-webkit-scrollbar-track {
+    background: hsl(var(--muted) / 0.2);
+    border-radius: 4px;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, hsl(var(--primary) / 0.4) 0%, hsl(var(--primary) / 0.25) 100%);
+    border-radius: 4px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+    transition: background 0.2s ease;
+  }
+
+  *::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(180deg, hsl(var(--primary) / 0.6) 0%, hsl(var(--primary) / 0.4) 100%);
+    background-clip: padding-box;
+  }
+
+  *::-webkit-scrollbar-thumb:active {
+    background: linear-gradient(180deg, hsl(var(--primary) / 0.8) 0%, hsl(var(--primary) / 0.6) 100%);
+    background-clip: padding-box;
+  }
+
+  *::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--primary) / 0.3) transparent;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, hsl(var(--primary) / 0.35) 0%, hsl(var(--primary) / 0.2) 100%);
+    border-radius: 3px;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(180deg, hsl(var(--primary) / 0.5) 0%, hsl(var(--primary) / 0.35) 100%);
+  }
+
+  /* Hidden scrollbar but still scrollable */
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+  /* Safe area for mobile devices */
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  .pt-safe {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+
+  /* Touch-friendly tap targets */
+  .touch-target {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  /* Prevent text selection on touch */
+  .no-select {
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+  }
+
+  /* Smooth momentum scrolling */
+  .scroll-smooth {
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Brand gradient */
+  .brand-gradient {
+    background: linear-gradient(135deg, hsl(var(--brand-orange)) 0%, hsl(21 100% 45%) 100%);
+  }
+
+  .brand-gradient-soft {
+    background: linear-gradient(135deg, hsl(var(--brand-orange) / 0.15) 0%, hsl(var(--brand-navy) / 0.15) 100%);
+  }
+
+  .brand-gradient-text {
+    background: linear-gradient(135deg, hsl(var(--brand-orange)) 0%, hsl(var(--brand-navy)) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  /* Colorful tinted surfaces */
+  .surface-orange {
+    background: linear-gradient(135deg, hsl(var(--brand-orange) / 0.08) 0%, hsl(var(--brand-orange) / 0.03) 100%);
+  }
+
+  .surface-blue {
+    background: linear-gradient(135deg, hsl(var(--brand-navy) / 0.08) 0%, hsl(var(--brand-navy) / 0.03) 100%);
+  }
+
+  .surface-success {
+    background: linear-gradient(135deg, hsl(var(--success) / 0.08) 0%, hsl(var(--success) / 0.03) 100%);
+  }
+
+  .surface-warning {
+    background: linear-gradient(135deg, hsl(var(--warning) / 0.08) 0%, hsl(var(--warning) / 0.03) 100%);
+  }
+
+  .surface-destructive {
+    background: linear-gradient(135deg, hsl(var(--destructive) / 0.08) 0%, hsl(var(--destructive) / 0.03) 100%);
+  }
+
+  /* Glass effect */
+  .glass {
+    backdrop-filter: blur(12px);
+    background: hsl(var(--background) / 0.8);
+  }
+
+  .glass-card {
+    backdrop-filter: blur(20px);
+    background: hsl(var(--card) / 0.85);
+    border: 1px solid hsl(var(--border) / 0.5);
+  }
+
+  /* Futuristic glow effects */
+  .glow-primary {
+    box-shadow: 0 0 20px hsl(var(--primary) / 0.3);
+  }
+
+  .glow-accent {
+    box-shadow: 0 0 20px hsl(var(--accent) / 0.3);
+  }
+
+  .glow-success {
+    box-shadow: 0 0 20px hsl(var(--success) / 0.3);
+  }
+
+  /* Task tile styles */
+  .task-tile {
+    @apply relative overflow-hidden rounded-2xl border border-border/30 bg-card transition-all duration-200;
+    background: linear-gradient(135deg, hsl(var(--card)) 0%, hsl(var(--muted) / 0.3) 100%);
+  }
+
+  .task-tile:hover {
+    @apply border-primary/30 shadow-lg;
+    transform: translateY(-2px);
+  }
+
+  .task-tile-active {
+    @apply ring-2 ring-success/30;
+  }
+
+  /* Swipe action backgrounds */
+  .swipe-action-start {
+    background: linear-gradient(90deg, hsl(var(--success)) 0%, hsl(var(--success) / 0.8) 100%);
+  }
+
+  .swipe-action-done {
+    background: linear-gradient(270deg, hsl(var(--primary)) 0%, hsl(var(--primary) / 0.8) 100%);
+  }
+
+  /* Modern card shadow */
+  .shadow-modern {
+    box-shadow: 
+      0 1px 2px hsl(var(--foreground) / 0.04),
+      0 4px 8px hsl(var(--foreground) / 0.04),
+      0 8px 16px hsl(var(--foreground) / 0.04);
+  }
+
+  .shadow-modern-lg {
+    box-shadow: 
+      0 4px 6px hsl(var(--foreground) / 0.05),
+      0 10px 20px hsl(var(--foreground) / 0.05),
+      0 20px 40px hsl(var(--foreground) / 0.05);
+  }
+
+  /* Colorful pill buttons */
+  .pill-button {
+    @apply px-4 py-2 rounded-full font-medium transition-all duration-200;
+  }
+
+  .pill-button:hover {
+    transform: scale(1.02);
+  }
+
+  /* Floating navigation */
+  .floating-nav {
+    @apply fixed bottom-4 left-4 right-4 rounded-2xl;
+    background: hsl(var(--card) / 0.95);
+    backdrop-filter: blur(20px);
+    box-shadow: 
+      0 4px 20px hsl(var(--foreground) / 0.1),
+      0 0 40px hsl(var(--primary) / 0.05);
+  }
+
+  /* Colorful status indicators */
+  .status-dot {
+    @apply h-2.5 w-2.5 rounded-full;
+  }
+
+  .status-dot-todo { background: hsl(var(--status-todo)); }
+  .status-dot-in-progress { background: hsl(var(--status-in-progress)); }
+  .status-dot-review { background: hsl(var(--status-review)); }
+  .status-dot-done { background: hsl(var(--status-done)); }
+
+  /* Animated pulse for active timers */
+  .pulse-glow {
+    animation: pulse-glow 2s ease-in-out infinite;
+  }
+
+  @keyframes pulse-glow {
+    0%, 100% { box-shadow: 0 0 5px hsl(var(--success) / 0.3); }
+    50% { box-shadow: 0 0 20px hsl(var(--success) / 0.5); }
+  }
+
+  /* Shake animation for errors */
+  .animate-shake {
+    animation: shake 0.4s ease-in-out;
+  }
+
+  @keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    10%, 30%, 50%, 70%, 90% { transform: translateX(-4px); }
+    20%, 40%, 60%, 80% { transform: translateX(4px); }
+  }
+}
