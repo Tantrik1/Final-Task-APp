@@ -9,19 +9,17 @@ import {
 } from 'lucide-react-native';
 import { DashboardHeader } from '@/components/DashboardHeader';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
+import { GlobalTabBar } from '@/components/GlobalTabBar';
 
 export default function TabLayout() {
     usePushNotifications();
 
     return (
         <Tabs
+            tabBar={() => <GlobalTabBar />}
             screenOptions={{
                 headerShown: true,
                 header: () => <DashboardHeader />,
-                tabBarStyle: styles.tabBar,
-                tabBarShowLabel: false,
-                tabBarActiveTintColor: '#F97316',
-                tabBarInactiveTintColor: '#94A3B8',
             }}
         >
             {/* 1. Calendar */}
@@ -70,34 +68,7 @@ export default function TabLayout() {
                 }}
             />
 
-            {/* Hidden tabs (accessible from menu) */}
-            <Tabs.Screen
-                name="members"
-                options={{
-                    href: null,
-                    // Header handled by screenOptions
-                }}
-            />
-            <Tabs.Screen
-                name="menu"
-                options={{
-                    href: null,
-                }}
-            />
-            <Tabs.Screen
-                name="profile"
-                options={{
-                    href: null,
-                    // Header handled by screenOptions
-                }}
-            />
-            <Tabs.Screen
-                name="settings"
-                options={{
-                    href: null,
-                    // Header handled by screenOptions
-                }}
-            />
+
         </Tabs>
     );
 }

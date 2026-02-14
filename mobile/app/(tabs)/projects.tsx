@@ -134,39 +134,55 @@ export default function Projects() {
 
             if (error) throw error;
 
-            // Fetch task counts using project_statuses is_completed flag
-            const allProjectIds = (data || []).map(p => p.id);
+            const projectsData = data || [];
+            if (projectsData.length === 0) {
+                setProjects([]);
+                return;
+            }
+
+            const allProjectIds = projectsData.map(p => p.id);
+
+            // Fetch all statuses for these projects to known which custom statuses are "completed"
             const { data: allStatuses } = await supabase
                 .from('project_statuses')
-                .select('project_id, id, is_completed')
+                .select('id, is_completed')
                 .in('project_id', allProjectIds);
 
             const completedStatusIds = new Set(
                 (allStatuses || []).filter(s => s.is_completed).map(s => s.id)
             );
 
-            const projectsWithCounts = await Promise.all(
-                (data || []).map(async (project) => {
-                    const { data: taskData } = await supabase
-                        .from('tasks')
-                        .select('id, custom_status_id, status')
-                        .eq('project_id', project.id);
+            // Fetch ALL tasks for these projects in one single query
+            const { data: allTasks } = await supabase
+                .from('tasks')
+                .select('id, project_id, custom_status_id, status')
+                .in('project_id', allProjectIds);
 
-                    const tasks = taskData || [];
-                    const doneCount = tasks.filter(t =>
-                        (t.custom_status_id && completedStatusIds.has(t.custom_status_id)) ||
-                        t.status === 'done'
-                    ).length;
+            // Aggregate counts in memory
+            const countsByProject: Record<string, { total: number, done: number }> = {};
 
-                    return {
-                        ...project,
-                        taskCounts: {
-                            total: tasks.length,
-                            done: doneCount,
-                        }
-                    };
-                })
-            );
+            // Initialize counters
+            allProjectIds.forEach(pid => {
+                countsByProject[pid] = { total: 0, done: 0 };
+            });
+
+            (allTasks || []).forEach(task => {
+                if (task.project_id && countsByProject[task.project_id]) {
+                    countsByProject[task.project_id].total++;
+
+                    const isCustomDone = task.custom_status_id && completedStatusIds.has(task.custom_status_id);
+                    const isSystemDone = task.status === 'done';
+
+                    if (isCustomDone || isSystemDone) {
+                        countsByProject[task.project_id].done++;
+                    }
+                }
+            });
+
+            const projectsWithCounts = projectsData.map(project => ({
+                ...project,
+                taskCounts: countsByProject[project.id] || { total: 0, done: 0 }
+            }));
 
             setProjects(projectsWithCounts);
         } catch (error) {

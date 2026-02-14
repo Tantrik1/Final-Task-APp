@@ -14,11 +14,15 @@ import {
     LogOut,
     ChevronRight,
     Briefcase,
-    Zap
+    Zap,
+    ArrowLeft
 } from 'lucide-react-native';
 import { useAuth } from '@/hooks/useAuth';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import Animated, { FadeInDown, FadeInRight, Layout } from 'react-native-reanimated';
+
+import { DashboardHeader } from '@/components/DashboardHeader';
+import { GlobalTabBar } from '@/components/GlobalTabBar';
 
 const { width } = Dimensions.get('window');
 const COLUMN_count = 2;
@@ -31,9 +35,10 @@ const MENU_ITEMS = [
     { id: 'tasks', title: 'My Tasks', subtitle: 'To-Do List', icon: CheckSquare, route: '/(tabs)/tasks', color: '#F97316', bg: '#FFF7ED' },
     { id: 'chat', title: 'Chat', subtitle: 'Team Comms', icon: MessageSquare, route: '/(tabs)/chat', color: '#10B981', bg: '#ECFDF5' },
     { id: 'calendar', title: 'Calendar', subtitle: 'Schedule', icon: Calendar, route: '/(tabs)/calendar', color: '#6366F1', bg: '#EEF2FF' },
-    { id: 'members', title: 'Startups', subtitle: 'Manage Team', icon: Users, route: '/(tabs)/members', color: '#EC4899', bg: '#FDF2F8' },
-    { id: 'profile', title: 'Profile', subtitle: 'Account Info', icon: User, route: '/(tabs)/profile', color: '#06B6D4', bg: '#ECFEFF' },
-    { id: 'settings', title: 'Settings', subtitle: 'App Prefs', icon: Settings, route: '/(tabs)/settings', color: '#64748B', bg: '#F1F5F9' },
+    { id: 'members', title: 'Startups', subtitle: 'Manage Team', icon: Users, route: '/members', color: '#EC4899', bg: '#FDF2F8' },
+    { id: 'profile', title: 'Profile', subtitle: 'Account Info', icon: User, route: '/profile', color: '#06B6D4', bg: '#ECFEFF' },
+    { id: 'activity', title: 'Activity Log', subtitle: 'Team Updates', icon: Zap, route: '/activity-log', color: '#F97316', bg: '#FFF7ED' },
+    { id: 'settings', title: 'Settings', subtitle: 'App Prefs', icon: Settings, route: '/settings', color: '#64748B', bg: '#F1F5F9' },
 ];
 
 export default function MenuScreen() {
@@ -57,8 +62,10 @@ export default function MenuScreen() {
 
     return (
         <View style={styles.container}>
+            <DashboardHeader showBack />
+
             <ScrollView
-                contentContainerStyle={styles.scrollContent}
+                contentContainerStyle={[styles.scrollContent, { paddingBottom: 120 }]}
                 showsVerticalScrollIndicator={false}
             >
                 {/* Grid Menu */}
@@ -97,6 +104,8 @@ export default function MenuScreen() {
                     <Text style={styles.versionText}>v1.0.0 • Hamro Task</Text>
                 </Animated.View>
             </ScrollView>
+
+            <GlobalTabBar />
         </View>
     );
 }
@@ -105,6 +114,32 @@ const styles = StyleSheet.create({
     container: {
         flex: 1,
         backgroundColor: '#F8FAFC',
+    },
+    header: {
+        backgroundColor: '#FFFFFF',
+        borderBottomWidth: 1,
+        borderBottomColor: '#F1F5F9',
+        zIndex: 10,
+    },
+    headerContent: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingHorizontal: 16,
+        paddingVertical: 12,
+    },
+    backBtn: {
+        width: 40,
+        height: 40,
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderRadius: 20,
+        backgroundColor: '#F1F5F9',
+    },
+    headerTitle: {
+        fontSize: 18,
+        fontWeight: '700',
+        color: '#1E293B',
     },
     scrollContent: {
         paddingTop: 24,

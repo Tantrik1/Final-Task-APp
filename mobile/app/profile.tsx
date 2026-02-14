@@ -10,30 +10,30 @@ import {
     Alert,
     Platform,
     Image,
-    StatusBar,
     Linking
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
-    User,
-    Mail,
     Save,
     LogOut,
     Shield,
-    Clock,
     Briefcase,
     Camera,
     ChevronRight,
     Bell,
     Lock,
-    HelpCircle
+    HelpCircle,
+    ArrowLeft
 } from 'lucide-react-native';
 import { formatDistanceToNow } from 'date-fns';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
+
+import { DashboardHeader } from '@/components/DashboardHeader';
+import { GlobalTabBar } from '@/components/GlobalTabBar';
 
 interface Profile {
     id: string;
@@ -164,8 +164,10 @@ export default function ProfileScreen() {
 
     return (
         <View style={s.container}>
+            <DashboardHeader showBack />
+
             <ScrollView
-                contentContainerStyle={s.scrollContent}
+                contentContainerStyle={[s.scrollContent, { paddingBottom: 120 }]}
                 showsVerticalScrollIndicator={false}
             >
                 {/* Profile Card */}
@@ -273,7 +275,7 @@ export default function ProfileScreen() {
 
                 {/* Additional Options */}
                 <Animated.View entering={FadeInDown.delay(200).springify()} style={s.optionsSection}>
-                    <TouchableOpacity style={s.optionRow} onPress={() => router.push('/(tabs)/notifications' as any)}>
+                    <TouchableOpacity style={s.optionRow} onPress={() => router.push('/notifications' as any)}>
                         <View style={[s.optionIcon, { backgroundColor: '#F0F9FF' }]}>
                             <Bell size={20} color="#0EA5E9" />
                         </View>
@@ -299,6 +301,7 @@ export default function ProfileScreen() {
 
                 <View style={{ height: 40 }} />
             </ScrollView>
+            <GlobalTabBar />
         </View>
     );
 }
@@ -307,9 +310,36 @@ const s = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#F8FAFC' },
     loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
 
+    header: {
+        backgroundColor: '#FFFFFF',
+        borderBottomWidth: 1,
+        borderBottomColor: '#F1F5F9',
+        zIndex: 10,
+    },
+    headerContent: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingHorizontal: 16,
+        paddingVertical: 12,
+    },
+    backBtn: {
+        width: 40,
+        height: 40,
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderRadius: 20,
+        backgroundColor: '#F1F5F9',
+    },
+    headerTitle: {
+        fontSize: 18,
+        fontWeight: '700',
+        color: '#1E293B',
+    },
+
     scrollContent: {
         paddingHorizontal: 20,
-        paddingTop: 40, // Added padding to clear header nicely
+        paddingTop: 40,
         paddingBottom: 40,
     },
 
@@ -317,7 +347,7 @@ const s = StyleSheet.create({
         backgroundColor: '#FFFFFF',
         borderRadius: 24,
         padding: 24,
-        paddingTop: 40, // Extra top padding for avatar overlap feel
+        paddingTop: 40,
         alignItems: 'center',
         shadowColor: '#64748B',
         shadowOffset: { width: 0, height: 4 },
@@ -328,7 +358,7 @@ const s = StyleSheet.create({
         marginTop: 20,
     },
     avatarContainer: {
-        marginTop: -80, // Negative margin to pull avatar up
+        marginTop: -80,
         marginBottom: 16,
     },
     avatarWrapper: {

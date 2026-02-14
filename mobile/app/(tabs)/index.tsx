@@ -146,9 +146,19 @@ const TaskRow = ({ task, onPress }: { task: Task; onPress: () => void }) => {
 
 // ─── Activity Row ──────────────────────────────────────────
 const ActivityRow = ({ activity }: { activity: ActivityItem }) => {
+    const router = useRouter();
     const { icon: Icon, color, bg } = getActivityIcon(activity.action_type);
+
+    const handlePress = () => {
+        if (activity.task_id) {
+            router.push(`/task/${activity.task_id}` as any);
+        } else if (activity.project_id) {
+            router.push(`/project/${activity.project_id}` as any);
+        }
+    };
+
     return (
-        <View style={s.activityRow}>
+        <TouchableOpacity style={s.activityRow} onPress={handlePress}>
             <View style={[s.activityIconWrap, { backgroundColor: bg }]}>
                 <Icon size={14} color={color} />
             </View>
@@ -156,7 +166,7 @@ const ActivityRow = ({ activity }: { activity: ActivityItem }) => {
                 <Text style={s.activityDesc} numberOfLines={2}>{activity.description}</Text>
                 <Text style={s.activityTime}>{formatDistanceToNow(new Date(activity.created_at), { addSuffix: true })}</Text>
             </View>
-        </View>
+        </TouchableOpacity>
     );
 };
 
@@ -505,8 +515,8 @@ export default function Dashboard() {
             {/* Activity Feed */}
             {activities.length > 0 && (
                 <View style={s.card}>
-                    <SectionHeader title="Recent Activity" icon={Zap} color="#F97316" />
-                    {activities.slice(0, 8).map(a => (
+                    <SectionHeader title="Recent Activity" icon={Zap} color="#F97316" onViewAll={() => router.push('/(tabs)/activity-log' as any)} />
+                    {activities.slice(0, 5).map(a => (
                         <ActivityRow key={a.id} activity={a} />
                     ))}
                 </View>

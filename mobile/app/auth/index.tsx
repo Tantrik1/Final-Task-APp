@@ -10,16 +10,100 @@ import {
     Dimensions,
     Animated,
     Image,
-    ActivityIndicator
+    ActivityIndicator,
+    Keyboard,
+    TouchableWithoutFeedback,
+    Alert,
+    FlexAlignType
 } from "react-native";
 import { useRouter } from "expo-router";
-import { Mail, Lock, User, Eye, EyeOff, Sparkles, ChevronRight, Check } from "lucide-react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { Mail, Lock, User, Eye, EyeOff, ChevronRight, Github, Chrome, Command } from "lucide-react-native";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/hooks/useAuth";
 
 const { width } = Dimensions.get("window");
 
+// ─── Custom Input Component ──────────────────────────────────────────────────
+const CustomInput = ({
+    label,
+    icon: Icon,
+    value,
+    onChangeText,
+    placeholder,
+    secureTextEntry,
+    keyboardType,
+    autoCapitalize,
+    isPassword,
+    showPassword,
+    toggleShowPassword
+}: any) => {
+    const [isFocused, setIsFocused] = useState(false);
+    // Animate border and background
+    const focusAnim = useRef(new Animated.Value(0)).current;
+
+    useEffect(() => {
+        Animated.timing(focusAnim, {
+            toValue: isFocused ? 1 : 0,
+            duration: 200,
+            useNativeDriver: false,
+        }).start();
+    }, [isFocused]);
+
+    const borderColor = focusAnim.interpolate({
+        inputRange: [0, 1],
+        outputRange: ['#E2E8F0', '#F97316']
+    });
+
+    const backgroundColor = focusAnim.interpolate({
+        inputRange: [0, 1],
+        outputRange: ['#F8FAFC', '#FFFFFF']
+    });
+
+    return (
+        <View style={styles.inputGroup}>
+            <Text style={styles.label}>{label}</Text>
+            <Animated.View style={[
+                styles.inputContainer,
+                {
+                    borderColor,
+                    backgroundColor,
+                    // Subtle shadow on focus
+                    shadowColor: '#F97316',
+                    shadowOffset: { width: 0, height: 4 },
+                    shadowOpacity: isFocused ? 0.1 : 0,
+                    shadowRadius: 8,
+                    elevation: isFocused ? 2 : 0,
+                }
+            ]}>
+                <Icon size={20} color={isFocused ? "#F97316" : "#94A3B8"} />
+                <TextInput
+                    style={styles.input}
+                    placeholder={placeholder}
+                    placeholderTextColor="#CBD5E1"
+                    value={value}
+                    onChangeText={onChangeText}
+                    secureTextEntry={secureTextEntry}
+                    keyboardType={keyboardType}
+                    autoCapitalize={autoCapitalize}
+                    onFocus={() => setIsFocused(true)}
+                    onBlur={() => setIsFocused(false)}
+                />
+                {isPassword && (
+                    <TouchableOpacity onPress={toggleShowPassword} style={styles.eyeIcon}>
+                        {showPassword ?
+                            <EyeOff size={20} color={isFocused ? "#F97316" : "#94A3B8"} /> :
+                            <Eye size={20} color={isFocused ? "#F97316" : "#94A3B8"} />
+                        }
+                    </TouchableOpacity>
+                )}
+            </Animated.View>
+        </View>
+    );
+};
+
+
 export default function AuthScreen() {
+    const insets = useSafeAreaInsets();
     const [isLogin, setIsLogin] = useState(true);
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
@@ -72,6 +156,7 @@ export default function AuthScreen() {
 
     const handleAuth = async () => {
         setErrorMsg("");
+        Keyboard.dismiss();
 
         if (!email || !password) {
             setErrorMsg("Please fill in all fields");
@@ -88,19 +173,16 @@ export default function AuthScreen() {
             if (isLogin) {
                 const { error } = await signIn(email, password);
                 if (error) throw error;
-                // Navigation handled by auth listener, but we can force redirect for better UX if listener is slow
-                // router.replace("/(tabs)"); 
             } else {
                 const { error } = await signUp(email, password, fullName);
                 if (error) throw error;
-                alert("Account created! Please check your email to confirm.");
+                Alert.alert("Success", "Account created! Please check your email to confirm.");
                 toggleMode();
             }
         } catch (err: any) {
             const msg = err.message || "Something went wrong";
             if (!isLogin && (msg.toLowerCase().includes("already") || msg.toLowerCase().includes("registered"))) {
-                setErrorMsg("An account with this email already exists. If you were invited to a workspace, please sign in with the credentials sent to your email.");
-                // Auto-switch to login tab after a moment
+                setErrorMsg("An account with this email already exists. Please login.");
                 setTimeout(() => toggleMode(), 2000);
             } else {
                 setErrorMsg(msg);
@@ -112,18 +194,24 @@ export default function AuthScreen() {
 
     return (
         <View style={styles.container}>
-            <SafeAreaView style={styles.safeArea}>
-                <KeyboardAvoidingView
-                    behavior={Platform.OS === "ios" ? "padding" : "height"}
-                    style={styles.keyboardView}
-                >
+            <Image
+                source={{ uri: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=2564&auto=format&fit=crop' }}
+                style={[styles.bgImage, { opacity: 0.03 }]}
+            />
+
+            <KeyboardAvoidingView
+                behavior={Platform.OS === "ios" ? "padding" : "height"}
+                style={styles.keyboardView}
+                keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}
+            >
+                <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
                     <ScrollView
-                        contentContainerStyle={styles.scrollContent}
+                        contentContainerStyle={[styles.scrollContent, { paddingBottom: 40 + insets.bottom }]}
                         keyboardShouldPersistTaps="handled"
                         showsVerticalScrollIndicator={false}
                     >
                         {/* Header Section */}
-                        <View style={styles.header}>
+                        <View style={[styles.header, { marginTop: insets.top + 40 }]}>
                             <View style={styles.logoContainer}>
                                 <Image
                                     source={require('@/assets/images/icon.png')}
@@ -138,9 +226,6 @@ export default function AuthScreen() {
                         {/* Error Banner */}
                         {errorMsg ? (
                             <View style={styles.errorContainer}>
-                                <View style={styles.errorIcon}>
-                                    <Text style={styles.errorIconText}>!</Text>
-                                </View>
                                 <Text style={styles.errorText}>{errorMsg}</Text>
                             </View>
                         ) : null}
@@ -150,12 +235,14 @@ export default function AuthScreen() {
                             <TouchableOpacity
                                 style={[styles.tab, isLogin && styles.activeTab]}
                                 onPress={() => !isLogin && toggleMode()}
+                                activeOpacity={0.8}
                             >
                                 <Text style={[styles.tabText, isLogin && styles.activeTabText]}>Login</Text>
                             </TouchableOpacity>
                             <TouchableOpacity
                                 style={[styles.tab, !isLogin && styles.activeTab]}
                                 onPress={() => isLogin && toggleMode()}
+                                activeOpacity={0.8}
                             >
                                 <Text style={[styles.tabText, !isLogin && styles.activeTabText]}>Sign Up</Text>
                             </TouchableOpacity>
@@ -173,62 +260,48 @@ export default function AuthScreen() {
                         >
                             {/* Full Name (Signup Only) */}
                             {!isLogin && (
-                                <View style={styles.inputGroup}>
-                                    <Text style={styles.label}>Full Name</Text>
-                                    <View style={styles.inputContainer}>
-                                        <User size={20} color="#94A3B8" />
-                                        <TextInput
-                                            style={styles.input}
-                                            placeholder="John Doe"
-                                            placeholderTextColor="#CBD5E1"
-                                            value={fullName}
-                                            onChangeText={setFullName}
-                                        />
-                                    </View>
-                                </View>
+                                <CustomInput
+                                    label="Full Name"
+                                    icon={User}
+                                    value={fullName}
+                                    onChangeText={setFullName}
+                                    placeholder="John Doe"
+                                    autoCapitalize="words"
+                                />
                             )}
 
                             {/* Email */}
-                            <View style={styles.inputGroup}>
-                                <Text style={styles.label}>Email</Text>
-                                <View style={styles.inputContainer}>
-                                    <Mail size={20} color="#94A3B8" />
-                                    <TextInput
-                                        style={styles.input}
-                                        placeholder="you@company.com"
-                                        placeholderTextColor="#CBD5E1"
-                                        value={email}
-                                        onChangeText={setEmail}
-                                        keyboardType="email-address"
-                                        autoCapitalize="none"
-                                    />
-                                </View>
-                            </View>
+                            <CustomInput
+                                label="Email"
+                                icon={Mail}
+                                value={email}
+                                onChangeText={setEmail}
+                                placeholder="you@company.com"
+                                keyboardType="email-address"
+                                autoCapitalize="none"
+                            />
 
                             {/* Password */}
-                            <View style={styles.inputGroup}>
-                                <View style={styles.passwordHeader}>
-                                    <Text style={styles.label}>Password</Text>
-                                    {isLogin && (
-                                        <TouchableOpacity onPress={() => router.push("/auth/reset")}>
-                                            <Text style={styles.forgotPassword}>Forgot Password?</Text>
-                                        </TouchableOpacity>
-                                    )}
-                                </View>
-                                <View style={styles.inputContainer}>
-                                    <Lock size={20} color="#94A3B8" />
-                                    <TextInput
-                                        style={styles.input}
-                                        placeholder="••••••••"
-                                        placeholderTextColor="#CBD5E1"
-                                        value={password}
-                                        onChangeText={setPassword}
-                                        secureTextEntry={!showPassword}
-                                    />
-                                    <TouchableOpacity onPress={() => setShowPassword(!showPassword)} style={styles.eyeIcon}>
-                                        {showPassword ? <EyeOff size={20} color="#94A3B8" /> : <Eye size={20} color="#94A3B8" />}
+                            <View>
+                                <CustomInput
+                                    label="Password"
+                                    icon={Lock}
+                                    value={password}
+                                    onChangeText={setPassword}
+                                    placeholder="••••••••"
+                                    isPassword={true}
+                                    showPassword={showPassword}
+                                    toggleShowPassword={() => setShowPassword(!showPassword)}
+                                    secureTextEntry={!showPassword}
+                                />
+                                {isLogin && (
+                                    <TouchableOpacity
+                                        style={styles.forgotPassContainer}
+                                        onPress={() => router.push("/auth/reset")}
+                                    >
+                                        <Text style={styles.forgotPassword}>Forgot Password?</Text>
                                     </TouchableOpacity>
-                                </View>
+                                )}
                             </View>
 
                             {/* Action Button */}
@@ -236,6 +309,7 @@ export default function AuthScreen() {
                                 style={[styles.button, loading && styles.buttonDisabled]}
                                 onPress={handleAuth}
                                 disabled={loading}
+                                activeOpacity={0.8}
                             >
                                 {loading ? (
                                     <ActivityIndicator color="white" />
@@ -244,7 +318,7 @@ export default function AuthScreen() {
                                         <Text style={styles.buttonText}>
                                             {isLogin ? "Sign In" : "Create Account"}
                                         </Text>
-                                        <ChevronRight size={22} color="white" strokeWidth={3} />
+                                        <ChevronRight size={20} color="white" strokeWidth={3} />
                                     </>
                                 )}
                             </TouchableOpacity>
@@ -258,17 +332,27 @@ export default function AuthScreen() {
 
                             {/* Social Buttons */}
                             <View style={styles.socialContainer}>
-                                {['google', 'apple', 'github'].map((provider, i) => (
-                                    <View key={i} style={styles.socialButton}>
-                                        <View style={styles.socialIconPlaceholder} />
+                                <TouchableOpacity style={styles.socialButton}>
+                                    <View style={[styles.socialIconCircle, { backgroundColor: '#EA4335' }]}>
+                                        <Chrome size={20} color="#FFF" />
                                     </View>
-                                ))}
+                                </TouchableOpacity>
+                                <TouchableOpacity style={styles.socialButton}>
+                                    <View style={[styles.socialIconCircle, { backgroundColor: '#000000' }]}>
+                                        <Command size={20} color="#FFF" />
+                                    </View>
+                                </TouchableOpacity>
+                                <TouchableOpacity style={styles.socialButton}>
+                                    <View style={[styles.socialIconCircle, { backgroundColor: '#181717' }]}>
+                                        <Github size={20} color="#FFF" />
+                                    </View>
+                                </TouchableOpacity>
                             </View>
 
                         </Animated.View>
                     </ScrollView>
-                </KeyboardAvoidingView>
-            </SafeAreaView>
+                </TouchableWithoutFeedback>
+            </KeyboardAvoidingView>
         </View>
     );
 }
@@ -278,37 +362,40 @@ const styles = {
         flex: 1,
         backgroundColor: '#FFFFFF',
     },
-    safeArea: {
-        flex: 1,
+    bgImage: {
+        ...Dimensions.get('window'), // Make specific typing
+        position: 'absolute' as 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
     },
     keyboardView: {
         flex: 1,
     },
     scrollContent: {
         flexGrow: 1,
-        paddingHorizontal: 24,
-        paddingBottom: 40,
+        paddingHorizontal: 28,
     },
     header: {
         alignItems: 'center' as const,
-        marginTop: 48,
         marginBottom: 32,
     },
     logoContainer: {
         width: 80,
         height: 80,
-        backgroundColor: '#FFF7ED', // orange-50
+        backgroundColor: '#FFF7ED',
         borderRadius: 24,
         alignItems: 'center' as const,
         justifyContent: 'center' as const,
         marginBottom: 16,
-        shadowColor: '#F97316',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.1,
-        shadowRadius: 12,
-        elevation: 4,
         borderWidth: 1,
         borderColor: '#FFEDD5',
+        shadowColor: '#F97316',
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.15,
+        shadowRadius: 16,
+        elevation: 8,
     },
     logo: {
         width: 48,
@@ -316,55 +403,38 @@ const styles = {
         borderRadius: 12,
     },
     title: {
-        fontSize: 32,
+        fontSize: 28,
         fontWeight: '800' as const,
         color: '#0F172A',
-        textAlign: 'center' as const,
-        letterSpacing: -1,
+        letterSpacing: -0.5,
     },
     subtitle: {
-        fontSize: 16,
+        fontSize: 15,
         fontWeight: '500' as const,
-        color: '#94A3B8',
-        marginTop: 4,
+        color: '#64748B',
+        marginTop: 6,
     },
     errorContainer: {
-        flexDirection: 'row' as const,
-        alignItems: 'center' as const,
         backgroundColor: '#FEF2F2',
-        padding: 16,
-        borderRadius: 16,
-        marginBottom: 24,
+        padding: 12,
+        borderRadius: 12,
+        marginBottom: 20,
         borderWidth: 1,
         borderColor: '#FEE2E2',
     },
-    errorIcon: {
-        width: 24,
-        height: 24,
-        backgroundColor: '#FEE2E2',
-        borderRadius: 12,
-        alignItems: 'center' as const,
-        justifyContent: 'center' as const,
-        marginRight: 12,
-    },
-    errorIconText: {
-        color: '#DC2626',
-        fontWeight: 'bold' as const,
-    },
     errorText: {
-        color: '#B91C1C',
-        fontWeight: '500' as const,
-        flex: 1,
+        color: '#EF4444',
+        fontSize: 13,
+        fontWeight: '600' as const,
+        textAlign: 'center' as const,
     },
-    // New Tab Styles
+    // Tabs
     tabContainer: {
         flexDirection: 'row' as const,
-        marginBottom: 32,
-        backgroundColor: '#F8FAFC',
+        marginBottom: 28,
+        backgroundColor: '#F1F5F9',
         borderRadius: 16,
         padding: 4,
-        borderWidth: 1,
-        borderColor: '#E2E8F0',
     },
     tab: {
         flex: 1,
@@ -377,41 +447,40 @@ const styles = {
         backgroundColor: '#FFFFFF',
         shadowColor: '#64748B',
         shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
+        shadowOpacity: 0.08,
         shadowRadius: 4,
         elevation: 2,
     },
     tabText: {
-        fontSize: 16,
+        fontSize: 15,
         fontWeight: '600' as const,
         color: '#64748B',
     },
     activeTabText: {
-        color: '#F97316', // Primary Orange
+        color: '#0F172A',
         fontWeight: '700' as const,
     },
-    formContainer: {
-        // spacing handled by children
-    },
+    formContainer: {},
+    // Inputs
     inputGroup: {
         marginBottom: 20,
     },
     label: {
-        fontSize: 14,
+        fontSize: 13,
         fontWeight: '700' as const,
         color: '#334155',
         marginBottom: 8,
         marginLeft: 4,
+        textTransform: 'uppercase' as const,
+        letterSpacing: 0.5,
     },
     inputContainer: {
-        height: 56,
+        height: 54,
         flexDirection: 'row' as const,
         alignItems: 'center' as const,
-        backgroundColor: '#F8FAFC',
         borderRadius: 16,
         paddingHorizontal: 16,
-        borderWidth: 1,
-        borderColor: '#E2E8F0',
+        borderWidth: 1.5, // Thicker border for better visibility
     },
     input: {
         flex: 1,
@@ -420,20 +489,20 @@ const styles = {
         fontWeight: '600' as const,
         color: '#0F172A',
     },
-    passwordHeader: {
-        flexDirection: 'row' as const,
-        justifyContent: 'space-between' as const,
-        alignItems: 'center' as const,
-        marginBottom: 8,
-    },
-    forgotPassword: {
-        fontSize: 12,
-        fontWeight: '600' as const,
-        color: '#94A3B8',
-    },
     eyeIcon: {
         padding: 8,
     },
+    forgotPassContainer: {
+        alignSelf: 'flex-end' as const, // Fix type inference
+        marginTop: -12,
+        marginBottom: 24,
+    },
+    forgotPassword: {
+        fontSize: 13,
+        fontWeight: '600' as const,
+        color: '#F97316',
+    },
+    // Button
     button: {
         height: 56,
         backgroundColor: '#F97316',
@@ -441,59 +510,58 @@ const styles = {
         flexDirection: 'row' as const,
         alignItems: 'center' as const,
         justifyContent: 'center' as const,
-        marginTop: 8,
         shadowColor: '#F97316',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.3,
-        shadowRadius: 8,
-        elevation: 4,
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.25,
+        shadowRadius: 16,
+        elevation: 8,
     },
     buttonDisabled: {
         opacity: 0.7,
     },
     buttonText: {
         color: '#FFFFFF',
-        fontSize: 18,
-        fontWeight: 'bold' as const,
-        marginRight: 8,
+        fontSize: 17,
+        fontWeight: '700' as const,
+        marginRight: 6,
     },
+    // Divider
     dividerContainer: {
         flexDirection: 'row' as const,
         alignItems: 'center' as const,
         justifyContent: 'center' as const,
-        marginVertical: 24,
+        marginVertical: 28,
     },
     dividerLine: {
         height: 1,
-        width: 48,
+        width: 40,
         backgroundColor: '#E2E8F0',
     },
     dividerText: {
         color: '#94A3B8',
         fontWeight: '500' as const,
-        marginHorizontal: 16,
+        fontSize: 13,
+        marginHorizontal: 12,
     },
     socialContainer: {
         flexDirection: 'row' as const,
         justifyContent: 'center' as const,
-        gap: 16,
+        gap: 20,
     },
     socialButton: {
-        height: 48,
+        padding: 4,
+        borderRadius: 20,
+    },
+    socialIconCircle: {
         width: 48,
-        backgroundColor: '#FFFFFF',
-        borderWidth: 1,
-        borderColor: '#E2E8F0',
-        borderRadius: 12,
+        height: 48,
+        borderRadius: 24,
         alignItems: 'center' as const,
         justifyContent: 'center' as const,
-        marginHorizontal: 8,
-    },
-    socialIconPlaceholder: {
-        height: 24,
-        width: 24,
-        backgroundColor: '#CBD5E1',
-        borderRadius: 12,
-        opacity: 0.5,
-    },
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.1,
+        shadowRadius: 8,
+        elevation: 4,
+    }
 };

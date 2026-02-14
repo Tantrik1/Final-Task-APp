@@ -25,13 +25,17 @@ import {
     ChevronRight,
     User,
     Shield,
-    Check
+    Check,
+    ArrowLeft
 } from 'lucide-react-native';
 import { supabase } from '@/lib/supabase';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { useAuth } from '@/hooks/useAuth';
 import { useNotifications, NotificationPreferences } from '@/hooks/useNotifications';
 import Animated, { FadeInDown } from 'react-native-reanimated';
+
+import { DashboardHeader } from '@/components/DashboardHeader';
+import { GlobalTabBar } from '@/components/GlobalTabBar';
 
 export default function SettingsScreen() {
     const insets = useSafeAreaInsets();
@@ -114,13 +118,15 @@ export default function SettingsScreen() {
 
     return (
         <View style={styles.container}>
-            <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+            <DashboardHeader showBack />
+
+            <ScrollView contentContainerStyle={[styles.scrollContent, { paddingBottom: 120 }]} showsVerticalScrollIndicator={false}>
 
                 {/* 1. Account & App */}
                 <Animated.View entering={FadeInDown.delay(100).springify()} style={styles.section}>
                     <Text style={styles.sectionTitle}>Account & App</Text>
 
-                    <TouchableOpacity style={styles.row} onPress={() => router.push('/(tabs)/profile' as any)}>
+                    <TouchableOpacity style={styles.row} onPress={() => router.push('/profile' as any)}>
                         <View style={[styles.iconBox, { backgroundColor: '#EFF6FF' }]}>
                             <User size={18} color="#3B82F6" />
                         </View>
@@ -262,12 +268,40 @@ export default function SettingsScreen() {
 
                 <View style={{ height: 40 }} />
             </ScrollView>
+            <GlobalTabBar />
         </View>
     );
 }
 
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#F8FAFC' },
+
+    header: {
+        backgroundColor: '#FFFFFF',
+        borderBottomWidth: 1,
+        borderBottomColor: '#F1F5F9',
+        zIndex: 10,
+    },
+    headerContent: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingHorizontal: 16,
+        paddingVertical: 12,
+    },
+    backBtn: {
+        width: 40,
+        height: 40,
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderRadius: 20,
+        backgroundColor: '#F1F5F9',
+    },
+    headerTitle: {
+        fontSize: 18,
+        fontWeight: '700',
+        color: '#1E293B',
+    },
 
     scrollContent: {
         paddingHorizontal: 20,

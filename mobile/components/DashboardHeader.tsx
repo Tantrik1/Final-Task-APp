@@ -10,17 +10,20 @@ import {
     Building2,
     Plus,
     Check,
-    Menu
+    Menu,
+    ArrowLeft
 } from 'lucide-react-native';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { useAuth } from '@/hooks/useAuth';
+import { useNotifications } from '@/hooks/useNotifications';
 import { useRouter } from 'expo-router';
 
-export function DashboardHeader() {
+export function DashboardHeader({ showBack = false }: { showBack?: boolean }) {
     const insets = useSafeAreaInsets();
     const router = useRouter();
     const { currentWorkspace, workspaces, setCurrentWorkspaceId } = useWorkspace();
     const { signOut, user } = useAuth();
+    const { unreadCount } = useNotifications();
 
     const [showWorkspaceMenu, setShowWorkspaceMenu] = useState(false);
     const [showProfileMenu, setShowProfileMenu] = useState(false);
@@ -54,33 +57,52 @@ export function DashboardHeader() {
         <View style={[styles.container, { paddingTop: insets.top + (Platform.OS === 'android' ? 10 : 0) }]}>
 
             {/* Left: Workspace Selector */}
-            <TouchableOpacity
-                style={styles.workspaceButton}
-                onPress={() => setShowWorkspaceMenu(true)}
-            >
-                <View style={styles.workspaceLogoContainer}>
-                    {currentWorkspace?.logo_url ? (
-                        <Image source={{ uri: currentWorkspace.logo_url }} style={styles.workspaceLogo} />
-                    ) : (
-                        <InitialsAvatar name={currentWorkspace?.name || 'W'} size={36} />
-                    )}
-                </View>
-                <View>
-                    <Text style={styles.workspaceLabel}>Workspace</Text>
-                    <View style={styles.workspaceNameContainer}>
-                        <Text style={styles.workspaceName} numberOfLines={1}>
-                            {currentWorkspace?.name || 'Select Workspace'}
-                        </Text>
-                        <ChevronDown size={14} color="#64748B" />
+            {showBack ? (
+                <TouchableOpacity
+                    style={styles.backButton}
+                    onPress={() => router.back()}
+                >
+                    <ArrowLeft size={24} color="#0F172A" />
+                </TouchableOpacity>
+            ) : (
+                <TouchableOpacity
+                    style={styles.workspaceButton}
+                    onPress={() => setShowWorkspaceMenu(true)}
+                >
+                    <View style={styles.workspaceLogoContainer}>
+                        {currentWorkspace?.logo_url ? (
+                            <Image source={{ uri: currentWorkspace.logo_url }} style={styles.workspaceLogo} />
+                        ) : (
+                            <InitialsAvatar name={currentWorkspace?.name || 'W'} size={36} />
+                        )}
                     </View>
-                </View>
-            </TouchableOpacity>
+                    <View>
+                        <Text style={styles.workspaceLabel}>Workspace</Text>
+                        <View style={styles.workspaceNameContainer}>
+                            <Text style={styles.workspaceName} numberOfLines={1}>
+                                {currentWorkspace?.name || 'Select Workspace'}
+                            </Text>
+                            <ChevronDown size={14} color="#64748B" />
+                        </View>
+                    </View>
+                </TouchableOpacity>
+            )}
 
             {/* Right: Actions */}
             <View style={styles.actionsContainer}>
-                <TouchableOpacity style={styles.iconButton} onPress={() => router.push('/notifications' as any)}>
-                    <Bell size={24} color="#64748B" />
-                    <View style={styles.badge} />
+                <TouchableOpacity
+                    style={styles.headerBtn}
+                    onPress={() => router.push('/notifications' as any)}
+                    activeOpacity={0.7}
+                >
+                    <Bell size={20} color={unreadCount > 0 ? "#0F172A" : "#64748B"} />
+                    {unreadCount > 0 && (
+                        <View style={styles.premiumBadge}>
+                            <Text style={styles.premiumBadgeText}>
+                                {unreadCount > 99 ? '99+' : unreadCount}
+                            </Text>
+                        </View>
+                    )}
                 </TouchableOpacity>
 
                 <TouchableOpacity onPress={() => setShowProfileMenu(true)}>
@@ -92,10 +114,10 @@ export function DashboardHeader() {
                 </TouchableOpacity>
 
                 <TouchableOpacity
-                    style={styles.iconButton}
-                    onPress={() => router.push('/(tabs)/menu' as any)}
+                    style={styles.headerBtn}
+                    onPress={() => router.push('/menu' as any)}
                 >
-                    <Menu size={24} color="#64748B" />
+                    <Menu size={20} color="#64748B" />
                 </TouchableOpacity>
             </View>
 
@@ -264,20 +286,35 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         gap: 16,
     },
-    iconButton: {
+    headerBtn: {
         position: 'relative',
-        padding: 4,
+        width: 40,
+        height: 40,
+        borderRadius: 12,
+        backgroundColor: '#F8FAFC',
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderWidth: 1,
+        borderColor: '#F1F5F9',
     },
-    badge: {
+    premiumBadge: {
         position: 'absolute',
-        top: 4,
-        right: 4,
-        width: 8,
-        height: 8,
-        borderRadius: 4,
-        backgroundColor: '#F97316',
-        borderWidth: 1.5,
+        top: -4,
+        right: -4,
+        minWidth: 18,
+        height: 18,
+        borderRadius: 9,
+        backgroundColor: '#EF4444',
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderWidth: 2,
         borderColor: '#FFFFFF',
+        paddingHorizontal: 4,
+    },
+    premiumBadgeText: {
+        fontSize: 10,
+        fontWeight: '700',
+        color: '#FFFFFF',
     },
     profileContainer: {
         shadowColor: '#000',
@@ -398,5 +435,15 @@ const styles = StyleSheet.create({
     profileEmail: {
         fontSize: 12,
         color: '#64748B',
+    },
+    backButton: {
+        width: 40,
+        height: 40,
+        borderRadius: 12,
+        backgroundColor: '#F8FAFC',
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderWidth: 1,
+        borderColor: '#F1F5F9',
     },
 });

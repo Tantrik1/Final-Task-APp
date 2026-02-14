@@ -32,12 +32,27 @@ const { width } = Dimensions.get('window');
 
 // ─── Helpers ──────────────────────────────────────────────
 
-const getNotificationIcon = (type: string, entityType: string) => {
-    if (entityType === 'task' || type.startsWith('task_')) return <CheckCircle2 size={16} color="#F97316" />;
-    if (entityType === 'project' || type.startsWith('project_')) return <FolderKanban size={16} color="#8B5CF6" />;
-    if (entityType === 'comment' || entityType === 'chat' || type.startsWith('comment_') || type.startsWith('chat_')) return <MessageSquare size={16} color="#3B82F6" />;
-    if (entityType === 'workspace' || entityType === 'member' || type === 'role_changed' || type === 'workspace_invite_accepted') return <Building2 size={16} color="#8B5CF6" />;
-    return <Bell size={16} color="#64748B" />;
+// ─── Helpers ──────────────────────────────────────────────
+
+const getNotificationStyle = (type: string, entityType: string) => {
+    // Task: Orange/Amber (Action/Item)
+    if (entityType === 'task' || type.startsWith('task_')) {
+        return { icon: CheckCircle2, bg: '#F97316', color: '#FFFFFF' };
+    }
+    // Project: Purple (Container)
+    if (entityType === 'project' || type.startsWith('project_')) {
+        return { icon: FolderKanban, bg: '#8B5CF6', color: '#FFFFFF' };
+    }
+    // Communication: Blue
+    if (entityType === 'comment' || entityType === 'chat' || type.startsWith('comment_') || type.startsWith('chat_')) {
+        return { icon: MessageSquare, bg: '#3B82F6', color: '#FFFFFF' };
+    }
+    // Workspace/Member: Indigo/Slate
+    if (entityType === 'workspace' || entityType === 'member' || type === 'role_changed' || type === 'workspace_invite_accepted') {
+        return { icon: Users, bg: '#6366F1', color: '#FFFFFF' }; // Users icon typically better for members
+    }
+    // Default
+    return { icon: Bell, bg: '#94A3B8', color: '#FFFFFF' };
 };
 
 const getNotificationCategory = (type: string, entityType: string): string => {
@@ -79,6 +94,7 @@ const NotificationItem = ({ item, onRead }: { item: Notification; onRead: (id: s
     };
 
     const timeAgo = useMemo(() => formatTime(item.created_at), [item.created_at]);
+    const { icon: Icon, bg, color } = getNotificationStyle(item.type, item.entity_type);
 
     return (
         <TouchableOpacity
@@ -97,8 +113,9 @@ const NotificationItem = ({ item, onRead }: { item: Notification; onRead: (id: s
                             </Text>
                         </View>
                     )}
-                    <View style={styles.iconBadge}>
-                        {getNotificationIcon(item.type, item.entity_type)}
+                    {/* Premium Badge: Solid Bg + White Icon */}
+                    <View style={[styles.iconBadge, { backgroundColor: bg }]}>
+                        <Icon size={10} color={color} strokeWidth={3} />
                     </View>
                 </View>
             </View>
@@ -144,6 +161,7 @@ export default function NotificationsScreen() {
     const insets = useSafeAreaInsets();
     const router = useRouter();
     const [activeTab, setActiveTab] = useState(0);
+    const [statusFilter, setStatusFilter] = useState<'all' | 'unread' | 'read'>('all');
 
     const {
         notifications,
@@ -220,14 +238,37 @@ export default function NotificationsScreen() {
 
     const filteredNotifications = useMemo(() => {
         return tabs.map((tab, index) => {
+            let baseList = notifications;
+
+            // 1. Filter by Status
+            if (statusFilter === 'unread') {
+                baseList = baseList.filter(n => !n.is_read);
+            } else if (statusFilter === 'read') {
+                baseList = baseList.filter(n => n.is_read);
+            }
+
+            // 2. Filter by Category (Tab)
             if (index === 0) return []; // All uses allItems (unified)
             if (index === 1) return []; // Projects uses separate list
-            return notifications.filter(n => {
+
+            return baseList.filter(n => {
                 const category = getNotificationCategory(n.type, n.entity_type);
                 return category === tab.toLowerCase();
             });
         });
-    }, [notifications]);
+    }, [notifications, statusFilter]);
+
+    // Update `allItems` to respect status filter
+    const filteredUnifiedItems = useMemo(() => {
+        let items = allItems;
+        if (statusFilter === 'unread') {
+            // Only show unread notifications. Activities don't have read status, so exclude them.
+            items = items.filter(i => i.kind === 'notification' ? !i.notification!.is_read : false);
+        } else if (statusFilter === 'read') {
+            items = items.filter(i => i.kind === 'notification' ? i.notification!.is_read : true);
+        }
+        return items;
+    }, [allItems, statusFilter]);
 
     // ─── Group items by date ──────────
 
@@ -259,11 +300,32 @@ export default function NotificationsScreen() {
                     <ChevronLeft size={24} color="#0F172A" />
                 </TouchableOpacity>
                 <Text style={styles.headerTitle}>Notifications</Text>
-                <TouchableOpacity onPress={() => markAllAsRead()} style={styles.headerRight}>
-                    <CheckCircle2 size={22} color="#64748B" />
+                {/* Improved Mark all as read button visibility */}
+                <TouchableOpacity
+                    onPress={() => markAllAsRead()}
+                    style={styles.markReadButton}
+                >
+                    <CheckCircle2 size={16} color="#F97316" />
+                    <Text style={styles.markReadText}>Mark all read</Text>
                 </TouchableOpacity>
             </View>
 
+            {/* Status Filters (Seen / Unseen) */}
+            <View style={styles.statusFilterContainer}>
+                {(['all', 'unread', 'read'] as const).map((filter) => (
+                    <TouchableOpacity
+                        key={filter}
+                        style={[styles.statusChip, statusFilter === filter && styles.activeStatusChip]}
+                        onPress={() => setStatusFilter(filter)}
+                    >
+                        <Text style={[styles.statusChipText, statusFilter === filter && styles.activeStatusChipText]}>
+                            {filter === 'all' ? 'All' : filter === 'unread' ? 'Unread' : 'Read'}
+                        </Text>
+                    </TouchableOpacity>
+                ))}
+            </View>
+
+            {/* Category Tabs */}
             <View style={styles.tabsContainer}>
                 {tabs.map((tab, index) => {
                     const isActive = activeTab === index;
@@ -347,10 +409,10 @@ export default function NotificationsScreen() {
 
         return (
             <FlatList
-                data={allItems}
+                data={filteredUnifiedItems} // Use filtered items
                 keyExtractor={(item) => item.id}
                 renderItem={({ item, index }) => {
-                    const prevDate = index > 0 ? format(new Date(allItems[index - 1].created_at), 'yyyy-MM-dd') : '';
+                    const prevDate = index > 0 ? format(new Date(filteredUnifiedItems[index - 1].created_at), 'yyyy-MM-dd') : '';
                     const curDate = format(new Date(item.created_at), 'yyyy-MM-dd');
                     const showDate = curDate !== prevDate;
 
@@ -360,7 +422,7 @@ export default function NotificationsScreen() {
                                 {showDate && <DateGroupHeader dateStr={item.created_at} />}
                                 <ActivityItem
                                     activity={item.activity}
-                                    isLast={index === allItems.length - 1}
+                                    isLast={index === filteredUnifiedItems.length - 1}
                                     onPress={item.activity.task_id ? () => router.push(`/task/${item.activity!.task_id}` as any) : undefined}
                                 />
                             </View>
@@ -529,9 +591,44 @@ const styles = StyleSheet.create({
         fontWeight: '700',
         color: '#0F172A',
     },
-    headerRight: {
-        padding: 8,
-        marginRight: -8,
+    markReadButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        paddingVertical: 6,
+        paddingHorizontal: 10,
+        backgroundColor: '#FFF7ED',
+        borderRadius: 16,
+    },
+    markReadText: {
+        fontSize: 12,
+        fontWeight: '600',
+        color: '#F97316',
+    },
+    statusFilterContainer: {
+        flexDirection: 'row',
+        paddingHorizontal: 16,
+        paddingTop: 12,
+        paddingBottom: 4,
+        backgroundColor: '#FFFFFF',
+        gap: 8,
+    },
+    statusChip: {
+        paddingVertical: 6,
+        paddingHorizontal: 12,
+        borderRadius: 16,
+        backgroundColor: '#F1F5F9',
+    },
+    activeStatusChip: {
+        backgroundColor: '#0F172A',
+    },
+    statusChipText: {
+        fontSize: 13,
+        fontWeight: '600',
+        color: '#64748B',
+    },
+    activeStatusChipText: {
+        color: '#FFFFFF',
     },
     tabsContainer: {
         flexDirection: 'row',
@@ -625,19 +722,18 @@ const styles = StyleSheet.create({
     },
     iconBadge: {
         position: 'absolute',
-        bottom: -4,
-        right: -4,
-        backgroundColor: '#FFFFFF',
-        borderRadius: 10,
-        width: 20,
-        height: 20,
+        bottom: -2,
+        right: -2,
+        borderRadius: 9, // Half of 18
+        width: 18,
+        height: 18,
         alignItems: 'center',
         justifyContent: 'center',
         borderWidth: 2,
-        borderColor: '#FFFFFF',
+        borderColor: '#FFFFFF', // Creates the "cutout" effect from avatar
         ...Platform.select({
-            ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 2 },
-            android: { elevation: 2 },
+            ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.15, shadowRadius: 2 },
+            android: { elevation: 3 },
         }),
     },
     itemContent: {

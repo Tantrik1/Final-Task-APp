@@ -13,7 +13,7 @@ import {
     Modal,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import {
     Users,
     Search,
@@ -33,13 +33,17 @@ import {
     Eye as EyeIcon,
     EyeOff,
     Check,
-    UserPlus
+    UserPlus,
+    ArrowLeft
 } from 'lucide-react-native';
 import { formatDistanceToNow } from 'date-fns';
 import { supabase } from '@/lib/supabase';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { useAuth } from '@/hooks/useAuth';
 import Animated, { FadeInDown } from 'react-native-reanimated';
+
+import { DashboardHeader } from '@/components/DashboardHeader';
+import { GlobalTabBar } from '@/components/GlobalTabBar';
 
 type WorkspaceRole = 'owner' | 'admin' | 'member' | 'viewer';
 
@@ -74,7 +78,8 @@ const TABS: { id: TabValue; label: string; Icon: any }[] = [
 ];
 
 export default function MembersScreen() {
-    // Note: No insets.top padding needed as DashboardHeader handles it
+    const insets = useSafeAreaInsets();
+    const router = useRouter();
     const { currentWorkspace, currentRole } = useWorkspace();
     const { user } = useAuth();
 
@@ -233,6 +238,8 @@ export default function MembersScreen() {
 
     return (
         <View style={s.container}>
+            <DashboardHeader showBack />
+
             {/* 1. Statistics / Header Summary (Below DashboardHeader) */}
             <View style={s.summaryRow}>
                 <View style={s.summaryItem}>
@@ -300,6 +307,7 @@ export default function MembersScreen() {
             )}
 
             {/* Modals (Invite & Role) would go here - omitted for brevity but logic exists */}
+            <GlobalTabBar />
         </View>
     );
 }
@@ -307,6 +315,33 @@ export default function MembersScreen() {
 const s = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#F8FAFC' },
     center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+
+    header: {
+        backgroundColor: '#FFFFFF',
+        borderBottomWidth: 1,
+        borderBottomColor: '#F1F5F9',
+        zIndex: 10,
+    },
+    headerContent: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingHorizontal: 16,
+        paddingVertical: 12,
+    },
+    backBtn: {
+        width: 40,
+        height: 40,
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderRadius: 20,
+        backgroundColor: '#F1F5F9',
+    },
+    headerTitle: {
+        fontSize: 18,
+        fontWeight: '700',
+        color: '#1E293B',
+    },
 
     summaryRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF', paddingVertical: 16, paddingHorizontal: 20, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
     summaryItem: { alignItems: 'center' },

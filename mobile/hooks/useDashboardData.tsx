@@ -67,6 +67,7 @@ export interface ActivityItem {
     project_color?: string;
     created_at: string;
     task_id?: string;
+    project_id?: string;
 }
 
 export interface Performer {
@@ -393,6 +394,8 @@ export function useDashboardData() {
                     .in('id', actorIds.length > 0 ? actorIds : ['__none__']);
                 const actorMap = new Map(actorProfs?.map(p => [p.id, p]));
 
+
+
                 setActivities(actLogs.map(log => {
                     const actor = actorMap.get(log.actor_id);
                     const proj = projectMap.get(log.project_id);
@@ -407,6 +410,7 @@ export function useDashboardData() {
                         project_color: proj?.color || '#6366f1',
                         created_at: log.created_at,
                         task_id: log.task_id,
+                        project_id: log.project_id,
                     };
                 }));
             } else {
