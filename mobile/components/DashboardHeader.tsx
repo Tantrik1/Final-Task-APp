@@ -213,7 +213,7 @@ export function DashboardHeader({ showBack = false }: { showBack?: boolean }) {
 
                         <View style={styles.menuDivider} />
 
-                        <TouchableOpacity style={styles.menuItem} onPress={() => { setShowProfileMenu(false); router.push('/(tabs)/settings' as any); }}>
+                        <TouchableOpacity style={styles.menuItem} onPress={() => { setShowProfileMenu(false); router.push('/settings' as any); }}>
                             <Settings size={20} color="#64748B" />
                             <Text style={[styles.menuItemText, { marginLeft: 12 }]}>Settings</Text>
                         </TouchableOpacity>

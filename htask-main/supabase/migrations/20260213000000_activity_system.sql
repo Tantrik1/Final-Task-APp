@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS public.task_attachments (
     file_path TEXT NOT NULL,
     file_type TEXT,
     file_size INTEGER,
-    uploaded_by UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -651,7 +651,7 @@ BEGIN
         );
         RETURN OLD;
     ELSIF (TG_OP = 'INSERT') THEN
-        v_actor_id := NEW.uploaded_by;
+        v_actor_id := NEW.user_id;
         SELECT COALESCE(full_name, split_part(email, '@', 1)) INTO v_actor_name FROM public.profiles WHERE id = v_actor_id;
         
         SELECT project_id, title INTO v_project_id, v_task_title FROM public.tasks WHERE id = NEW.task_id;

@@ -120,9 +120,9 @@ export function TaskDetailsTab({ taskId, task, attachments, links, userId, onTas
       const filePath = `task-attachments/${taskId}/${Date.now()}_${fileName}`;
       const response = await fetch(uri);
       const blob = await response.blob();
-      const { error: uploadError } = await supabase.storage.from('attachments').upload(filePath, blob, { contentType: fileType });
+      const { error: uploadError } = await supabase.storage.from('task-attachments').upload(filePath, blob, { contentType: fileType });
       if (uploadError) throw uploadError;
-      const { data: urlData } = supabase.storage.from('attachments').getPublicUrl(filePath);
+      const { data: urlData } = supabase.storage.from('task-attachments').getPublicUrl(filePath);
       const { error: dbError } = await supabase.from('task_attachments').insert({
         task_id: taskId, user_id: userId, file_name: fileName, file_type: fileType, file_size: fileSize, file_url: urlData.publicUrl,
       });

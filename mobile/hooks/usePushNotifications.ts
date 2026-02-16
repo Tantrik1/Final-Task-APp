@@ -117,6 +117,10 @@ export function usePushNotifications() {
                 .upsert({
                     user_id: user.id,
                     endpoint: token,
+                    p256dh: 'expo', // Dummy value for Expo Push
+                    auth: 'expo',   // Dummy value for Expo Push
+                    platform: Platform.OS,
+                    user_agent: `Expo/${Platform.OS}`, // Simple UA
                     is_active: true,
                 }, {
                     onConflict: 'user_id,endpoint',

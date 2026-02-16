@@ -191,6 +191,10 @@ function RootLayoutNav() {
           <Stack.Screen name="project/[id]" options={{ headerShown: false, animation: 'slide_from_right', gestureEnabled: true, fullScreenGestureEnabled: true }} />
           <Stack.Screen name="task/[id]" options={{ headerShown: false, animation: 'slide_from_right', gestureEnabled: true, fullScreenGestureEnabled: true }} />
           <Stack.Screen name="notifications" options={{ headerShown: false, animation: 'slide_from_right' }} />
+          <Stack.Screen name="settings" options={{ headerShown: false, animation: 'slide_from_right', gestureEnabled: true, fullScreenGestureEnabled: true }} />
+          <Stack.Screen name="profile" options={{ headerShown: false, animation: 'slide_from_right', gestureEnabled: true, fullScreenGestureEnabled: true }} />
+          <Stack.Screen name="menu" options={{ headerShown: false, animation: 'fade' }} />
+          <Stack.Screen name="activity-log" options={{ headerShown: false, animation: 'slide_from_right' }} />
           <Stack.Screen name="modal" options={{ presentation: 'modal', gestureEnabled: true, fullScreenGestureEnabled: true }} />
         </Stack>
       </WorkspaceProvider>

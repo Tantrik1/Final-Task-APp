@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, TouchableOpacity, StyleSheet, useWindowDimensions, Platform } from 'react-native';
+import { View, TouchableOpacity, StyleSheet, useWindowDimensions, Platform, Text } from 'react-native';
 import { useRouter, usePathname } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -15,7 +15,7 @@ import {
 import Animated, { useAnimatedStyle, useSharedValue, withSpring, withTiming, FadeIn } from 'react-native-reanimated';
 
 // Fixed constants
-const TAB_BAR_HEIGHT = 50;
+const TAB_BAR_HEIGHT = 55;
 const CURVE_DEPTH = 36;
 const CENTER_BUTTON_SIZE = 64;
 
@@ -23,11 +23,13 @@ const TabIcon = ({
     Icon,
     isActive,
     label,
+    color,
     onPress
 }: {
     Icon: any,
     isActive: boolean,
     label: string,
+    color: string,
     onPress: () => void
 }) => {
     const scale = useSharedValue(1);
@@ -52,16 +54,13 @@ const TabIcon = ({
         >
             <Animated.View style={[styles.iconWrapper, animatedStyle]}>
                 <Icon
-                    size={28}
-                    color={isActive ? '#F97316' : '#94A3B8'}
+                    size={24}
+                    color={isActive ? color : '#F97316'}
                     strokeWidth={isActive ? 2.5 : 2}
                 />
-                {isActive && (
-                    <Animated.View
-                        style={styles.activeIndicator}
-                        entering={FadeIn.duration(300)}
-                    />
-                )}
+                <Text style={[styles.tabLabel, { color: isActive ? color : '#F97316' }]}>
+                    {label}
+                </Text>
             </Animated.View>
         </TouchableOpacity>
     );
@@ -108,11 +107,11 @@ export const GlobalTabBar = () => {
     const { width } = useWindowDimensions();
 
     const tabs = [
-        { id: 'calendar', label: 'Calendar', Icon: Calendar, route: '/(tabs)/calendar' },
-        { id: 'index', label: 'Home', Icon: Home, route: '/(tabs)' },
-        { id: 'tasks', label: 'Tasks', Icon: CheckSquare, route: '/(tabs)/tasks' },
-        { id: 'projects', label: 'Projects', Icon: FolderKanban, route: '/(tabs)/projects' },
-        { id: 'chat', label: 'Chat', Icon: MessageSquare, route: '/(tabs)/chat' },
+        { id: 'calendar', label: 'Calendar', Icon: Calendar, route: '/calendar', color: '#8B5CF6' }, // Violet
+        { id: 'index', label: 'Home', Icon: Home, route: '/', color: '#683310ff' }, // Brown
+        { id: 'tasks', label: 'Tasks', Icon: CheckSquare, route: '/tasks', color: '#10B981' }, // Emerald
+        { id: 'projects', label: 'Projects', Icon: FolderKanban, route: '/projects', color: '#EC4899' }, // Pink
+        { id: 'chat', label: 'Chat', Icon: MessageSquare, route: '/chat', color: '#3B82F6' }, // Blue
     ];
 
     // Layout: [Calendar, Home]  [Tasks]  [Projects, Chat]
@@ -121,15 +120,22 @@ export const GlobalTabBar = () => {
     const centerRoute = tabs[2].route;
 
     const isActive = (route: string) => {
-        if (route === '/(tabs)' && pathname === '/') return true;
-        if (route === '/(tabs)') return pathname === '/' || pathname === '/(tabs)';
-        return pathname.includes(route) && route !== '/(tabs)';
+        // Handle root path specifically
+        if (route === '/' && pathname === '/') return true;
+
+        // Handle other paths - check if pathname starts with the route
+        // e.g. /projects/123 should match /projects
+        if (route !== '/') {
+            return pathname.startsWith(route);
+        }
+
+        return false;
     };
 
     // SVG Path Construction
     // A full width rectangle with a bezier curve dip in the top center
     const center = width / 2;
-    const holeWidth = 65; // The span of the dip
+    const holeWidth = 75; // The span of the dip
 
     // Path logic:
     // Start top-left -> curve down center -> top-right -> bottom-right -> bottom-left -> close
@@ -139,8 +145,8 @@ export const GlobalTabBar = () => {
         C ${center - holeWidth / 3},0 ${center - holeWidth / 4},${CURVE_DEPTH} ${center},${CURVE_DEPTH}
         C ${center + holeWidth / 4},${CURVE_DEPTH} ${center + holeWidth / 3},0 ${center + holeWidth / 2},0
         L ${width},0
-        L ${width},${TAB_BAR_HEIGHT + 30}
-        L 0,${TAB_BAR_HEIGHT + 30}
+        L ${width},${TAB_BAR_HEIGHT + 50}
+        L 0,${TAB_BAR_HEIGHT + 50}
         Z
     `;
 
@@ -151,9 +157,9 @@ export const GlobalTabBar = () => {
                 <Svg width={width} height={TAB_BAR_HEIGHT + insets.bottom + 50} style={styles.svgBg}>
                     <Defs>
                         <SvgGradient id="bgGrad" x1="0" y1="0" x2="0" y2="1">
-                            <Stop offset="0" stopColor="#FFFFFF" stopOpacity="1" />
-                            <Stop offset="0.4" stopColor="#FDFBF9" stopOpacity="1" />
-                            <Stop offset="1" stopColor="#F8FAFC" stopOpacity="1" />
+                            <Stop offset="0" stopColor="#ffffffff" stopOpacity="1" />
+                            <Stop offset="0.4" stopColor="#ffffffff" stopOpacity="1" />
+                            <Stop offset="1" stopColor="#ffffffff" stopOpacity="1" />
                         </SvgGradient>
                     </Defs>
                     {/* Shadow simulation using view shadow instead for simplicity */}
@@ -168,6 +174,7 @@ export const GlobalTabBar = () => {
                                 key={tab.id}
                                 Icon={tab.Icon}
                                 label={tab.label}
+                                color={tab.color}
                                 isActive={isActive(tab.route)}
                                 onPress={() => router.push(tab.route as any)}
                             />
@@ -184,6 +191,7 @@ export const GlobalTabBar = () => {
                                 key={tab.id}
                                 Icon={tab.Icon}
                                 label={tab.label}
+                                color={tab.color}
                                 isActive={isActive(tab.route)}
                                 onPress={() => router.push(tab.route as any)}
                             />
@@ -257,8 +265,12 @@ const styles = StyleSheet.create({
     iconWrapper: {
         alignItems: 'center',
         justifyContent: 'center',
-        width: 48,
-        height: 48,
+        minWidth: 48,
+    },
+    tabLabel: {
+        fontSize: 10,
+        fontWeight: '600',
+        marginTop: 2,
     },
     activeIndicator: {
         position: 'absolute',
@@ -274,11 +286,11 @@ const styles = StyleSheet.create({
         borderRadius: CENTER_BUTTON_SIZE / 2,
         backgroundColor: '#FFFFFF', // OuterRim
         padding: 5,
-        shadowColor: "#F97316",
+        shadowColor: "#704221ff",
         shadowOffset: { width: 0, height: 8 },
         shadowOpacity: 0.35,
         shadowRadius: 10,
-        elevation: 10,
+        elevation: 6,
     },
     centerBtn: {
         flex: 1,
