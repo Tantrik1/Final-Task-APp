@@ -195,6 +195,7 @@ function RootLayoutNav() {
           <Stack.Screen name="profile" options={{ headerShown: false, animation: 'slide_from_right', gestureEnabled: true, fullScreenGestureEnabled: true }} />
           <Stack.Screen name="menu" options={{ headerShown: false, animation: 'fade' }} />
           <Stack.Screen name="activity-log" options={{ headerShown: false, animation: 'slide_from_right' }} />
+          <Stack.Screen name="ai-assistant" options={{ headerShown: false, animation: 'slide_from_bottom', gestureEnabled: true, fullScreenGestureEnabled: true }} />
           <Stack.Screen name="modal" options={{ presentation: 'modal', gestureEnabled: true, fullScreenGestureEnabled: true }} />
         </Stack>
       </WorkspaceProvider>
