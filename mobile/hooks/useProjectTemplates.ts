@@ -28,6 +28,7 @@ export interface TemplateStatus {
     position: number;
     is_default: boolean;
     is_completed: boolean;
+    category?: 'todo' | 'active' | 'done' | 'cancelled';
 }
 
 export interface TemplateCustomField {
@@ -181,7 +182,8 @@ export function useProjectTemplates(workspaceId: string | undefined) {
                     ...s,
                     id: `system-status-${idx}`,
                     is_default: s.is_default || false,
-                    is_completed: s.is_completed || false
+                    is_completed: s.is_completed || false,
+                    category: (s as any).category || (s.is_completed ? 'done' : s.is_default ? 'todo' : 'active'),
                 })),
                 custom_fields: systemTemplate.fields.map((f, i) => ({
                     name: f.name,
@@ -296,6 +298,7 @@ export function useProjectTemplates(workspaceId: string | undefined) {
                         position: s.position,
                         is_default: s.is_default || false,
                         is_completed: s.is_completed || false,
+                        category: s.category || (s.is_completed ? 'done' : s.is_default ? 'todo' : 'active'),
                     })));
                 if (statusError) throw statusError;
             }
@@ -424,6 +427,7 @@ export function useProjectTemplates(workspaceId: string | undefined) {
                         position: s.position ?? idx,
                         is_default: s.is_default || false,
                         is_completed: s.is_completed || false,
+                        category: (s as any).category || (s.is_completed ? 'done' : s.is_default ? 'todo' : 'active'),
                     })));
                 if (statusError) throw statusError;
             }
@@ -466,13 +470,14 @@ export function useProjectTemplates(workspaceId: string | undefined) {
             if (statusesResult.data && statusesResult.data.length > 0) {
                 await supabase
                     .from('template_statuses')
-                    .insert(statusesResult.data.map(s => ({
+                    .insert(statusesResult.data.map((s: any) => ({
                         template_id: template.id,
                         name: s.name,
                         color: s.color,
                         position: s.position,
                         is_default: s.is_default,
                         is_completed: s.is_completed,
+                        category: s.category || (s.is_completed ? 'done' : s.is_default ? 'todo' : 'active'),
                     })));
             }
 

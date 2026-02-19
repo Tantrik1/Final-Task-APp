@@ -454,18 +454,14 @@ export function useNotifications(): UseNotificationsReturn {
                     filter: `user_id=eq.${user.id}`,
                 },
                 (payload) => {
-                    setNotifications((prev) =>
-                        prev.map((n) =>
+                    setNotifications((prev) => {
+                        const updated = prev.map((n) =>
                             n.id === payload.new.id ? { ...n, ...payload.new } : n
-                        )
-                    );
-
-                    // Re-calculate unread count if needed?
-                    // Actually, if an update happens (e.g. read status changed elsewhere), 
-                    // we should probably re-fetch or carefully update unread count.
-                    // For now, let's just trust the payload.is_read.
-                    // BUT, if we just marked it read locally, we might get an echoed update.
-                    // React state updates are batched, so it should be fine.
+                        );
+                        // Recalculate unread count from the updated list
+                        setUnreadCount(updated.filter(n => !n.is_read).length);
+                        return updated;
+                    });
                 }
             )
             .subscribe();

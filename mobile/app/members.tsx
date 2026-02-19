@@ -11,6 +11,7 @@ import {
     Alert,
     Platform,
     Modal,
+    Image,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
@@ -40,6 +41,8 @@ import { formatDistanceToNow } from 'date-fns';
 import { supabase } from '@/lib/supabase';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { useAuth } from '@/hooks/useAuth';
+import { useTheme } from '@/contexts/ThemeContext';
+import { MembersSkeleton } from '@/components/ui/Skeleton';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 
 import { DashboardHeader } from '@/components/DashboardHeader';
@@ -82,6 +85,7 @@ export default function MembersScreen() {
     const router = useRouter();
     const { currentWorkspace, currentRole } = useWorkspace();
     const { user } = useAuth();
+    const { colors } = useTheme();
 
     const [members, setMembers] = useState<MemberWithProfile[]>([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -178,9 +182,50 @@ export default function MembersScreen() {
     }, [members, searchQuery, activeTab]);
 
     const handleRoleChange = async (member: MemberWithProfile, newRole: WorkspaceRole) => {
-        // Implementation remains same as before...
-        // For brevity in this redesign, assuming logic is intact.
-        Alert.alert('Role Updated', 'Role change logic here');
+        if (!currentWorkspace?.id || newRole === member.role) return;
+        try {
+            const { error } = await supabase
+                .from('workspace_members')
+                .update({ role: newRole })
+                .eq('workspace_id', currentWorkspace.id)
+                .eq('user_id', member.user_id);
+            if (error) throw error;
+            setShowRoleModal(false);
+            setSelectedMember(null);
+            fetchMembers();
+        } catch (error: any) {
+            console.error('Error changing role:', error);
+            Alert.alert('Error', 'Failed to update role: ' + error.message);
+        }
+    };
+
+    const handleRemoveMember = async (member: MemberWithProfile) => {
+        if (!currentWorkspace?.id) return;
+        Alert.alert(
+            'Remove Member',
+            `Remove ${member.profiles.full_name || member.profiles.email} from this workspace?`,
+            [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                    text: 'Remove', style: 'destructive', onPress: async () => {
+                        try {
+                            const { error } = await supabase
+                                .from('workspace_members')
+                                .delete()
+                                .eq('workspace_id', currentWorkspace.id)
+                                .eq('user_id', member.user_id);
+                            if (error) throw error;
+                            setShowRoleModal(false);
+                            setSelectedMember(null);
+                            fetchMembers();
+                        } catch (error: any) {
+                            console.error('Error removing member:', error);
+                            Alert.alert('Error', 'Failed to remove member: ' + error.message);
+                        }
+                    }
+                },
+            ]
+        );
     };
 
     const renderMemberCard = (member: MemberWithProfile, index: number) => {
@@ -194,31 +239,35 @@ export default function MembersScreen() {
 
         // Dynamic consistent color based on user ID
         const getColor = (str: string) => {
-            const colors = ['#3B82F6', '#8B5CF6', '#EC4899', '#F97316', '#22C55E'];
+            const palette = ['#3B82F6', '#8B5CF6', '#EC4899', '#F97316', '#22C55E'];
             let hash = 0;
             for (let i = 0; i < str.length; i++) hash = str.charCodeAt(i) + ((hash << 5) - hash);
-            return colors[Math.abs(hash) % colors.length];
+            return palette[Math.abs(hash) % palette.length];
         };
         const avatarColor = getColor(member.user_id);
 
         return (
-            <Animated.View key={member.id} entering={FadeInDown.delay(index * 50).springify()} style={s.memberCard}>
+            <Animated.View key={member.id} entering={FadeInDown.delay(index * 50).springify()} style={[s.memberCard, { backgroundColor: colors.card, shadowColor: colors.shadow }]}>
                 <View style={[s.avatar, { backgroundColor: avatarColor + '20' }]}>
-                    <Text style={[s.avatarText, { color: avatarColor }]}>{initials}</Text>
+                    {member.profiles.avatar_url ? (
+                        <Image source={{ uri: member.profiles.avatar_url }} style={s.avatarImg} />
+                    ) : (
+                        <Text style={[s.avatarText, { color: avatarColor }]}>{initials}</Text>
+                    )}
                     <View style={[
-                        s.statusDot,
+                        s.statusDot, { borderColor: colors.card },
                         status === 'active' && { backgroundColor: '#22C55E' },
                         status === 'awaiting' && { backgroundColor: '#F59E0B' },
-                        status === 'inactive' && { backgroundColor: '#CBD5E1' }
+                        status === 'inactive' && { backgroundColor: colors.textTertiary }
                     ]} />
                 </View>
 
                 <View style={s.info}>
                     <View style={s.nameRow}>
-                        <Text style={s.name}>{name}</Text>
-                        {isCurrentUser && <View style={s.youBadge}><Text style={s.youText}>YOU</Text></View>}
+                        <Text style={[s.name, { color: colors.text }]}>{name}</Text>
+                        {isCurrentUser && <View style={[s.youBadge, { backgroundColor: colors.surface }]}><Text style={[s.youText, { color: colors.textSecondary }]}>YOU</Text></View>}
                     </View>
-                    <Text style={s.email}>{member.profiles.email}</Text>
+                    <Text style={[s.email, { color: colors.textSecondary }]}>{member.profiles.email}</Text>
                 </View>
 
                 <View style={s.metaCol}>
@@ -228,7 +277,7 @@ export default function MembersScreen() {
                     </View>
                     {canModify && (
                         <TouchableOpacity style={s.moreBtn} onPress={() => { setSelectedMember(member); setShowRoleModal(true); }}>
-                            <MoreHorizontal size={16} color="#94A3B8" />
+                            <MoreHorizontal size={16} color={colors.textTertiary} />
                         </TouchableOpacity>
                     )}
                 </View>
@@ -237,19 +286,19 @@ export default function MembersScreen() {
     };
 
     return (
-        <View style={s.container}>
+        <View style={[s.container, { backgroundColor: colors.background }]}>
             <DashboardHeader showBack />
 
             {/* 1. Statistics / Header Summary (Below DashboardHeader) */}
-            <View style={s.summaryRow}>
+            <View style={[s.summaryRow, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
                 <View style={s.summaryItem}>
-                    <Text style={s.summaryVal}>{members.length}</Text>
-                    <Text style={s.summaryLabel}>Total Members</Text>
+                    <Text style={[s.summaryVal, { color: colors.text }]}>{members.length}</Text>
+                    <Text style={[s.summaryLabel, { color: colors.textSecondary }]}>Total Members</Text>
                 </View>
-                <View style={s.summaryDivider} />
+                <View style={[s.summaryDivider, { backgroundColor: colors.border }]} />
                 <View style={s.summaryItem}>
-                    <Text style={s.summaryVal}>{members.filter(isActiveMember).length}</Text>
-                    <Text style={s.summaryLabel}>Active Now</Text>
+                    <Text style={[s.summaryVal, { color: colors.text }]}>{members.filter(isActiveMember).length}</Text>
+                    <Text style={[s.summaryLabel, { color: colors.textSecondary }]}>Active Now</Text>
                 </View>
                 {canManageMembers && (
                     <TouchableOpacity style={s.inviteBtn} onPress={() => setShowInviteModal(true)}>
@@ -261,18 +310,18 @@ export default function MembersScreen() {
 
             {/* 2. Search & Filter Bar */}
             <View style={s.filterBar}>
-                <View style={s.searchBox}>
-                    <Search size={16} color="#94A3B8" />
+                <View style={[s.searchBox, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                    <Search size={16} color={colors.textTertiary} />
                     <TextInput
-                        style={s.input}
+                        style={[s.input, { color: colors.text }]}
                         placeholder="Search team..."
-                        placeholderTextColor="#94A3B8"
+                        placeholderTextColor={colors.textTertiary}
                         value={searchQuery}
                         onChangeText={setSearchQuery}
                     />
                     {searchQuery.length > 0 && (
                         <TouchableOpacity onPress={() => setSearchQuery('')}>
-                            <X size={16} color="#94A3B8" />
+                            <X size={16} color={colors.textTertiary} />
                         </TouchableOpacity>
                     )}
                 </View>
@@ -280,10 +329,10 @@ export default function MembersScreen() {
                     {TABS.map(tab => (
                         <TouchableOpacity
                             key={tab.id}
-                            style={[s.tab, activeTab === tab.id && s.tabActive]}
+                            style={[s.tab, { backgroundColor: colors.card, borderColor: colors.border }, activeTab === tab.id && s.tabActive]}
                             onPress={() => setActiveTab(tab.id)}
                         >
-                            <Text style={[s.tabText, activeTab === tab.id && s.tabTextActive]}>{tab.label}</Text>
+                            <Text style={[s.tabText, { color: colors.textSecondary }, activeTab === tab.id && s.tabTextActive]}>{tab.label}</Text>
                         </TouchableOpacity>
                     ))}
                 </ScrollView>
@@ -291,16 +340,16 @@ export default function MembersScreen() {
 
             {/* 3. Members List */}
             {isLoading ? (
-                <View style={s.center}><ActivityIndicator size="large" color="#F97316" /></View>
+                <MembersSkeleton />
             ) : filteredMembers.length === 0 ? (
                 <View style={s.emptyState}>
-                    <Users size={48} color="#E2E8F0" />
-                    <Text style={s.emptyText}>No members found</Text>
+                    <Users size={48} color={colors.textTertiary} />
+                    <Text style={[s.emptyText, { color: colors.textTertiary }]}>No members found</Text>
                 </View>
             ) : (
                 <ScrollView
                     contentContainerStyle={{ padding: 16, paddingBottom: 100 }}
-                    refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#F97316" />}
+                    refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
                 >
                     {filteredMembers.map((m, i) => renderMemberCard(m, i))}
                 </ScrollView>
@@ -362,7 +411,8 @@ const s = StyleSheet.create({
     tabTextActive: { color: '#FFF' },
 
     memberCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF', padding: 12, borderRadius: 16, marginBottom: 8, ...Platform.select({ ios: { shadowColor: '#64748B', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 4 }, android: { elevation: 1 } }) },
-    avatar: { width: 44, height: 44, borderRadius: 16, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
+    avatar: { width: 44, height: 44, borderRadius: 16, alignItems: 'center', justifyContent: 'center', marginRight: 12, overflow: 'hidden' as const },
+    avatarImg: { width: 44, height: 44, borderRadius: 16 },
     avatarText: { fontSize: 16, fontWeight: '700' },
     statusDot: { position: 'absolute', bottom: -2, right: -2, width: 12, height: 12, borderRadius: 6, borderWidth: 2, borderColor: '#FFF' },
 

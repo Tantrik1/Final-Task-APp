@@ -35,6 +35,8 @@ import { CreateTaskModal } from '@/components/CreateTaskModal';
 import { supabase } from '@/lib/supabase';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { useAuth } from '@/hooks/useAuth';
+import { useTheme } from '@/contexts/ThemeContext';
+import { CalendarSkeleton } from '@/components/ui/Skeleton';
 import Animated, {
     FadeInDown,
     FadeInRight,
@@ -68,7 +70,7 @@ const VIEW_MODES = [
     { id: 'day', icon: List, label: 'Day' },
 ];
 
-const DayProgress = ({ progress, isSelected }: { progress: number, isSelected: boolean }) => {
+const DayProgress = ({ progress, isSelected, trackColor }: { progress: number, isSelected: boolean, trackColor: string }) => {
     const radius = 18;
     const stroke = 2.5;
     const normalizedRadius = radius - stroke;
@@ -79,7 +81,7 @@ const DayProgress = ({ progress, isSelected }: { progress: number, isSelected: b
         <View style={s.progressContainer}>
             <Svg height={radius * 2} width={radius * 2}>
                 <Circle
-                    stroke={isSelected ? 'rgba(255,255,255,0.3)' : '#E2E8F0'}
+                    stroke={isSelected ? 'rgba(255,255,255,0.3)' : trackColor}
                     fill="transparent"
                     strokeWidth={stroke}
                     r={normalizedRadius}
@@ -104,7 +106,7 @@ const DayProgress = ({ progress, isSelected }: { progress: number, isSelected: b
     );
 };
 
-const CustomDay = ({ date, state, marking, onPress }: any) => {
+const CustomDay = ({ date, state, marking, onPress, themeColors }: any) => {
     const isSelected = marking?.selected;
     const isTodayDate = state === 'today';
     const isDisabled = state === 'disabled';
@@ -112,19 +114,20 @@ const CustomDay = ({ date, state, marking, onPress }: any) => {
 
     return (
         <TouchableOpacity
-            style={[s.dayContainer, isSelected && s.daySelected]}
+            style={[s.dayContainer, isSelected && { backgroundColor: themeColors?.primary || '#F97316' }]}
             onPress={() => onPress(date)}
             disabled={isDisabled}
         >
             <View style={s.dayContent}>
                 {marking?.hasTasks && (
-                    <DayProgress progress={progress} isSelected={isSelected} />
+                    <DayProgress progress={progress} isSelected={isSelected} trackColor={themeColors?.border || '#E2E8F0'} />
                 )}
                 <Text style={[
                     s.dayText,
+                    { color: themeColors?.text || '#334155' },
                     isSelected && s.dayTextSelected,
-                    isTodayDate && !isSelected && s.dayTextToday,
-                    isDisabled && s.dayTextDisabled
+                    isTodayDate && !isSelected && { color: themeColors?.primary || '#F97316', fontWeight: '800' },
+                    isDisabled && { color: themeColors?.border || '#CBD5E1' }
                 ]}>
                     {date.day}
                 </Text>
@@ -137,6 +140,7 @@ export default function CalendarScreen() {
     const router = useRouter();
     const { currentWorkspace } = useWorkspace();
     const { user } = useAuth();
+    const { colors } = useTheme();
     const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = useWindowDimensions();
 
     const isTablet = SCREEN_WIDTH >= 768;
@@ -170,11 +174,11 @@ export default function CalendarScreen() {
 
             const { data: statusData } = await supabase
                 .from('project_statuses')
-                .select('id, is_completed')
+                .select('id, is_completed, category')
                 .in('project_id', projectIds);
 
             const completedStatusIds = new Set(
-                (statusData || []).filter(s => s.is_completed).map(s => s.id)
+                (statusData || []).filter(s => s.category === 'done' || s.category === 'cancelled' || s.is_completed).map(s => s.id)
             );
 
             const { data, error } = await supabase
@@ -190,7 +194,9 @@ export default function CalendarScreen() {
                 (data || []).map(t => ({
                     ...t,
                     project: projectMap.get(t.project_id),
-                    is_completed: t.status === 'done' || (t.custom_status_id && completedStatusIds.has(t.custom_status_id))
+                    is_completed: t.custom_status_id
+                        ? completedStatusIds.has(t.custom_status_id)
+                        : t.status === 'done'
                 }))
             );
         } catch (error) {
@@ -248,25 +254,25 @@ export default function CalendarScreen() {
 
     if (isLoading) {
         return (
-            <View style={s.center}>
-                <ActivityIndicator size="large" color="#F97316" />
+            <View style={[s.container, { backgroundColor: colors.background }]}>
+                <CalendarSkeleton />
             </View>
         );
     }
 
     return (
-        <View style={s.container}>
+        <View style={[s.container, { backgroundColor: colors.background }]}>
             {/* ─── Header View Controls ─── */}
             <View style={s.header}>
-                <View style={[s.viewToggle, isTablet && s.tabletToggle]}>
+                <View style={[s.viewToggle, { backgroundColor: colors.surface }, isTablet && s.tabletToggle]}>
                     {VIEW_MODES.map((mode) => (
                         <TouchableOpacity
                             key={mode.id}
-                            style={[s.toggleBtn, viewMode === mode.id && s.toggleBtnActive]}
+                            style={[s.toggleBtn, viewMode === mode.id && [s.toggleBtnActive, { backgroundColor: colors.card }]]}
                             onPress={() => { triggerHaptic(); setViewMode(mode.id as any); }}
                         >
-                            <mode.icon size={16} color={viewMode === mode.id ? '#F97316' : '#94A3B8'} />
-                            <Text style={[s.toggleLabel, viewMode === mode.id && s.toggleLabelActive]}>{mode.label}</Text>
+                            <mode.icon size={16} color={viewMode === mode.id ? colors.primary : colors.textTertiary} />
+                            <Text style={[s.toggleLabel, { color: colors.textTertiary }, viewMode === mode.id && { color: colors.text }]}>{mode.label}</Text>
                         </TouchableOpacity>
                     ))}
                 </View>
@@ -286,28 +292,28 @@ export default function CalendarScreen() {
                         entering={FadeInDown.springify()}
                         exiting={FadeInDown.springify()}
                         layout={Layout.springify()}
-                        style={[s.calendarContainer, isTablet && s.tabletCalendar]}
+                        style={[s.calendarContainer, { backgroundColor: colors.card, borderColor: colors.border }, isTablet && s.tabletCalendar]}
                     >
                         <Calendar
                             markingType={'custom'}
                             markedDates={markedDates}
                             onDayPress={(day: any) => { triggerHaptic(); setSelectedDate(day.dateString); }}
-                            dayComponent={(props: any) => <CustomDay {...props} onPress={(day: any) => { triggerHaptic(); setSelectedDate(day.dateString); }} />}
+                            dayComponent={(props: any) => <CustomDay {...props} themeColors={colors} onPress={(day: any) => { triggerHaptic(); setSelectedDate(day.dateString); }} />}
                             theme={{
-                                backgroundColor: '#ffffff',
-                                calendarBackground: '#ffffff',
-                                textSectionTitleColor: '#94A3B8',
-                                selectedDayBackgroundColor: '#F97316',
+                                backgroundColor: colors.card,
+                                calendarBackground: colors.card,
+                                textSectionTitleColor: colors.textTertiary,
+                                selectedDayBackgroundColor: colors.primary,
                                 selectedDayTextColor: '#ffffff',
-                                todayTextColor: '#F97316',
-                                dayTextColor: '#334155',
-                                textDisabledColor: '#E2E8F0',
-                                dotColor: '#F97316',
+                                todayTextColor: colors.primary,
+                                dayTextColor: colors.text,
+                                textDisabledColor: colors.border,
+                                dotColor: colors.primary,
                                 selectedDotColor: '#ffffff',
-                                arrowColor: '#F97316',
-                                disabledArrowColor: '#E2E8F0',
-                                monthTextColor: '#0F172A',
-                                indicatorColor: '#F97316',
+                                arrowColor: colors.primary,
+                                disabledArrowColor: colors.border,
+                                monthTextColor: colors.text,
+                                indicatorColor: colors.primary,
                                 textDayFontWeight: '600',
                                 textMonthFontWeight: 'bold',
                                 textDayHeaderFontWeight: '700',
@@ -327,11 +333,11 @@ export default function CalendarScreen() {
                         <View style={s.mvSelectedSection}>
                             <View style={s.mvSelectedHeader}>
                                 <View>
-                                    <Text style={s.mvSelectedDate}>{format(parseISO(selectedDate), 'EEE, MMM d')}</Text>
-                                    <Text style={s.mvSelectedCount}>{selectedTasks.length} task{selectedTasks.length !== 1 ? 's' : ''}</Text>
+                                    <Text style={[s.mvSelectedDate, { color: colors.text }]}>{format(parseISO(selectedDate), 'EEE, MMM d')}</Text>
+                                    <Text style={[s.mvSelectedCount, { color: colors.textTertiary }]}>{selectedTasks.length} task{selectedTasks.length !== 1 ? 's' : ''}</Text>
                                 </View>
                                 <TouchableOpacity
-                                    style={s.mvAddBtn}
+                                    style={[s.mvAddBtn, { backgroundColor: colors.primary }]}
                                     onPress={() => {
                                         triggerHaptic();
                                         setCreateTaskDueDate(selectedDate);
@@ -342,17 +348,17 @@ export default function CalendarScreen() {
                                 </TouchableOpacity>
                             </View>
                             {selectedTasks.length === 0 ? (
-                                <Text style={s.mvNoTasks}>No tasks for this date</Text>
+                                <Text style={[s.mvNoTasks, { color: colors.textTertiary }]}>No tasks for this date</Text>
                             ) : (
                                 selectedTasks.map(task => (
                                     <TouchableOpacity
                                         key={task.id}
-                                        style={[s.dvTaskCard, task.is_completed && s.dvTaskCardDone]}
+                                        style={[s.dvTaskCard, { backgroundColor: colors.card, borderColor: colors.border }, task.is_completed && s.dvTaskCardDone]}
                                         onPress={() => router.push(`/task/${task.id}` as any)}
                                         activeOpacity={0.8}
                                     >
                                         <View style={[s.dvTaskDot, { backgroundColor: PRIORITY_CONFIG[task.priority]?.color || '#94A3B8' }]} />
-                                        <Text style={[s.dvTaskTitle, task.is_completed && s.dvTaskTitleDone]} numberOfLines={1}>
+                                        <Text style={[s.dvTaskTitle, { color: colors.text }, task.is_completed && s.dvTaskTitleDone]} numberOfLines={1}>
                                             {task.title}
                                         </Text>
                                         {task.is_completed ? (
@@ -383,16 +389,16 @@ export default function CalendarScreen() {
                             style={[s.agendaContainer, isTablet && s.tabletAgenda]}
                         >
                             {/* ─── Month/Year Switcher ─── */}
-                            <View style={s.dvMonthHeader}>
+                            <View style={[s.dvMonthHeader, { backgroundColor: colors.card, borderColor: colors.border }]}>
                                 <TouchableOpacity
-                                    style={s.dvNavBtn}
+                                    style={[s.dvNavBtn, { backgroundColor: colors.primary + '15' }]}
                                     onPress={() => { triggerHaptic(); setDayViewMonth(prev => subMonths(prev, 1)); setExpandedDay(null); }}
                                 >
-                                    <ChevronLeft size={20} color="#F97316" />
+                                    <ChevronLeft size={20} color={colors.primary} />
                                 </TouchableOpacity>
                                 <View style={s.dvMonthCenter}>
-                                    <Text style={s.dvMonthTitle}>{format(dayViewMonth, 'MMMM yyyy')}</Text>
-                                    <Text style={s.dvMonthSub}>
+                                    <Text style={[s.dvMonthTitle, { color: colors.text }]}>{format(dayViewMonth, 'MMMM yyyy')}</Text>
+                                    <Text style={[s.dvMonthSub, { color: colors.textTertiary }]}>
                                         {daysInMonth.length} days · {tasks.filter(t => {
                                             if (!t.due_date) return false;
                                             const d = parseISO(t.due_date);
@@ -401,10 +407,10 @@ export default function CalendarScreen() {
                                     </Text>
                                 </View>
                                 <TouchableOpacity
-                                    style={s.dvNavBtn}
+                                    style={[s.dvNavBtn, { backgroundColor: colors.primary + '15' }]}
                                     onPress={() => { triggerHaptic(); setDayViewMonth(prev => addMonths(prev, 1)); setExpandedDay(null); }}
                                 >
-                                    <ChevronRight size={20} color="#F97316" />
+                                    <ChevronRight size={20} color={colors.primary} />
                                 </TouchableOpacity>
                             </View>
 
@@ -412,7 +418,7 @@ export default function CalendarScreen() {
                             <ScrollView
                                 showsVerticalScrollIndicator={false}
                                 contentContainerStyle={s.dvList}
-                                refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#F97316" />}
+                                refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
                             >
                                 {daysInMonth.map((day, idx) => {
                                     const dateKey = format(day, 'yyyy-MM-dd');
@@ -427,42 +433,42 @@ export default function CalendarScreen() {
                                         <Animated.View key={dateKey} entering={FadeInDown.delay(idx * 20).springify()} layout={Layout.springify()}>
                                             {/* ─ Day Summary Row ─ */}
                                             <TouchableOpacity
-                                                style={[s.dvRow, isTodayDay && s.dvRowToday, isExpanded && s.dvRowExpanded]}
+                                                style={[s.dvRow, { backgroundColor: colors.card, borderColor: colors.border }, isTodayDay && [s.dvRowToday, { borderColor: colors.primary, backgroundColor: colors.primary + '08' }], isExpanded && s.dvRowExpanded]}
                                                 onPress={() => { triggerHaptic(); setExpandedDay(isExpanded ? null : dateKey); }}
                                                 activeOpacity={0.7}
                                             >
-                                                <View style={[s.dvDayNum, isTodayDay && s.dvDayNumToday]}>
-                                                    <Text style={[s.dvDayNumText, isTodayDay && s.dvDayNumTextToday]}>{getDate(day)}</Text>
+                                                <View style={[s.dvDayNum, { backgroundColor: colors.surface }, isTodayDay && { backgroundColor: colors.primary }]}>
+                                                    <Text style={[s.dvDayNumText, { color: colors.text }, isTodayDay && s.dvDayNumTextToday]}>{getDate(day)}</Text>
                                                 </View>
                                                 <View style={s.dvDayInfo}>
-                                                    <Text style={s.dvDayName}>{format(day, 'EEE')}</Text>
-                                                    <Text style={s.dvTaskCount}>
+                                                    <Text style={[s.dvDayName, { color: colors.text }]}>{format(day, 'EEE')}</Text>
+                                                    <Text style={[s.dvTaskCount, { color: colors.textTertiary }]}>
                                                         {total === 0 ? 'No tasks' : `${total} task${total > 1 ? 's' : ''}`}
                                                     </Text>
                                                 </View>
                                                 {total > 0 && (
-                                                    <View style={[s.dvPctBadge, pct === 100 && s.dvPctBadgeDone]}>
-                                                        <Text style={[s.dvPctText, pct === 100 && s.dvPctTextDone]}>{pct}%</Text>
+                                                    <View style={[s.dvPctBadge, { backgroundColor: colors.surface }, pct === 100 && s.dvPctBadgeDone]}>
+                                                        <Text style={[s.dvPctText, { color: colors.textSecondary }, pct === 100 && s.dvPctTextDone]}>{pct}%</Text>
                                                     </View>
                                                 )}
                                                 <ChevronRight
                                                     size={16}
-                                                    color={isExpanded ? '#F97316' : '#CBD5E1'}
+                                                    color={isExpanded ? colors.primary : colors.textTertiary}
                                                     style={{ transform: [{ rotate: isExpanded ? '90deg' : '0deg' }] }}
                                                 />
                                             </TouchableOpacity>
 
                                             {/* ─ Expanded Day Detail ─ */}
                                             {isExpanded && (
-                                                <Animated.View entering={FadeInDown.duration(200)} style={s.dvExpanded}>
+                                                <Animated.View entering={FadeInDown.duration(200)} style={[s.dvExpanded, { backgroundColor: colors.surface, borderColor: colors.border }]}>
                                                     {dayTasks.length === 0 ? (
                                                         <View style={s.dvEmptyState}>
-                                                            <Sparkles size={24} color="#CBD5E1" />
-                                                            <Text style={s.dvEmptyTitle}>No tasks for this day</Text>
-                                                            <Text style={s.dvEmptySub}>Would you like to create one?</Text>
+                                                            <Sparkles size={24} color={colors.textTertiary} />
+                                                            <Text style={[s.dvEmptyTitle, { color: colors.textSecondary }]}>No tasks for this day</Text>
+                                                            <Text style={[s.dvEmptySub, { color: colors.textTertiary }]}>Would you like to create one?</Text>
                                                             <View style={s.dvEmptyActions}>
                                                                 <TouchableOpacity
-                                                                    style={s.dvEmptyYes}
+                                                                    style={[s.dvEmptyYes, { backgroundColor: colors.primary }]}
                                                                     onPress={() => {
                                                                         triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
                                                                         setCreateTaskDueDate(dateKey);
@@ -473,10 +479,10 @@ export default function CalendarScreen() {
                                                                     <Text style={s.dvEmptyYesText}>Yes, create</Text>
                                                                 </TouchableOpacity>
                                                                 <TouchableOpacity
-                                                                    style={s.dvEmptyNo}
+                                                                    style={[s.dvEmptyNo, { borderColor: colors.border, backgroundColor: colors.card }]}
                                                                     onPress={() => { triggerHaptic(); setExpandedDay(null); }}
                                                                 >
-                                                                    <Text style={s.dvEmptyNoText}>No thanks</Text>
+                                                                    <Text style={[s.dvEmptyNoText, { color: colors.textTertiary }]}>No thanks</Text>
                                                                 </TouchableOpacity>
                                                             </View>
                                                         </View>
@@ -485,12 +491,12 @@ export default function CalendarScreen() {
                                                             {dayTasks.map((task) => (
                                                                 <TouchableOpacity
                                                                     key={task.id}
-                                                                    style={[s.dvTaskCard, task.is_completed && s.dvTaskCardDone]}
+                                                                    style={[s.dvTaskCard, { backgroundColor: colors.card, borderColor: colors.border }, task.is_completed && s.dvTaskCardDone]}
                                                                     onPress={() => router.push(`/task/${task.id}` as any)}
                                                                     activeOpacity={0.8}
                                                                 >
                                                                     <View style={[s.dvTaskDot, { backgroundColor: PRIORITY_CONFIG[task.priority]?.color || '#94A3B8' }]} />
-                                                                    <Text style={[s.dvTaskTitle, task.is_completed && s.dvTaskTitleDone]} numberOfLines={1}>
+                                                                    <Text style={[s.dvTaskTitle, { color: colors.text }, task.is_completed && s.dvTaskTitleDone]} numberOfLines={1}>
                                                                         {task.title}
                                                                     </Text>
                                                                     {task.is_completed ? (
@@ -505,15 +511,15 @@ export default function CalendarScreen() {
                                                                 </TouchableOpacity>
                                                             ))}
                                                             <TouchableOpacity
-                                                                style={s.dvAddBtn}
+                                                                style={[s.dvAddBtn, { borderColor: colors.primary }]}
                                                                 onPress={() => {
                                                                     triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
                                                                     setCreateTaskDueDate(dateKey);
                                                                     setShowCreateTaskModal(true);
                                                                 }}
                                                             >
-                                                                <Plus size={14} color="#F97316" />
-                                                                <Text style={s.dvAddBtnText}>Add task</Text>
+                                                                <Plus size={14} color={colors.primary} />
+                                                                <Text style={[s.dvAddBtnText, { color: colors.primary }]}>Add task</Text>
                                                             </TouchableOpacity>
                                                         </>
                                                     )}
@@ -954,9 +960,7 @@ const s = StyleSheet.create({
         gap: 12,
     },
     dvRowToday: {
-        borderColor: '#F97316',
         borderWidth: 1.5,
-        backgroundColor: '#FFFBF5',
     },
     dvRowExpanded: {
         borderBottomLeftRadius: 0,

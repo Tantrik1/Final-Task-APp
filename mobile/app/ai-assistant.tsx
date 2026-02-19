@@ -13,14 +13,18 @@ import {
     FolderOpen, UserCheck, AlertTriangle, Zap, X,
 } from 'lucide-react-native';
 import * as Speech from 'expo-speech';
+import * as Clipboard from 'expo-clipboard';
+import * as Haptics from 'expo-haptics';
 import { Audio } from 'expo-av';
 import { useAIAssistant, SmartButton } from '@/hooks/useAIAssistant';
+import { useTheme } from '@/contexts/ThemeContext';
 
 const { width } = Dimensions.get('window');
 
 // ─── Typing Indicator ─────────────────────────────────────────────────────────
 
 const TypingIndicator = ({ status }: { status?: string }) => {
+    const { colors } = useTheme();
     const dot1 = useRef(new Animated.Value(0.3)).current;
     const dot2 = useRef(new Animated.Value(0.3)).current;
     const dot3 = useRef(new Animated.Value(0.3)).current;
@@ -39,31 +43,32 @@ const TypingIndicator = ({ status }: { status?: string }) => {
         <View style={styles.typingWrap}>
             <View style={styles.dotsRow}>
                 {[dot1, dot2, dot3].map((d, i) => (
-                    <Animated.View key={i} style={[styles.dot, { opacity: d }]} />
+                    <Animated.View key={i} style={[styles.dot, { opacity: d, backgroundColor: colors.typingIndicator }]} />
                 ))}
             </View>
-            {status ? <Text style={styles.typingStatus}>{status}</Text> : null}
+            {status ? <Text style={[styles.typingStatus, { color: colors.textSecondary }]}>{status}</Text> : null}
         </View>
     );
 };
 
 // ─── Markdown Text Renderer ───────────────────────────────────────────────────
 
-const renderInline = (text: string, isUser: boolean): React.ReactNode[] => {
+const renderInline = (text: string, isUser: boolean, colors: any): React.ReactNode[] => {
     const parts = text.split(/(\*\*.*?\*\*)/g);
     return parts.map((part, i) => {
         if (part.startsWith('**') && part.endsWith('**')) {
             return (
-                <Text key={i} style={[styles.boldText, isUser && { color: '#fff' }]}>
+                <Text key={i} style={[styles.boldText, { color: isUser ? '#fff' : colors.text }]}>
                     {part.slice(2, -2)}
                 </Text>
             );
         }
-        return <Text key={i} style={isUser ? styles.msgTextUser : styles.msgText}>{part}</Text>;
+        return <Text key={i} style={{ color: isUser ? colors.userBubbleText : colors.text }}>{part}</Text>;
     });
 };
 
 const MessageText = ({ content, isUser }: { content: string; isUser: boolean }) => {
+    const { colors } = useTheme();
     const clean = content.replace(/```[\s\S]*?```/g, '').trim();
     const lines = clean.split('\n');
     return (
@@ -74,16 +79,16 @@ const MessageText = ({ content, isUser }: { content: string; isUser: boolean }) 
                 if (t.startsWith('- ') || t.startsWith('• ') || t.startsWith('* ')) {
                     return (
                         <View key={idx} style={styles.bulletRow}>
-                            <Text style={[styles.bullet, isUser && { color: 'rgba(255,255,255,0.7)' }]}>•</Text>
-                            <Text style={[styles.msgText, isUser && styles.msgTextUser, { flex: 1 }]}>
-                                {renderInline(t.replace(/^[-•*]\s/, ''), isUser)}
+                            <Text style={[styles.bullet, { color: isUser ? 'rgba(255,255,255,0.7)' : colors.primary }]}>•</Text>
+                            <Text style={[styles.msgText, isUser && styles.msgTextUser, { flex: 1, color: isUser ? colors.userBubbleText : colors.text }]}>
+                                {renderInline(t.replace(/^[-•*]\s/, ''), isUser, colors)}
                             </Text>
                         </View>
                     );
                 }
                 return (
-                    <Text key={idx} style={[styles.msgText, isUser && styles.msgTextUser]}>
-                        {renderInline(line, isUser)}
+                    <Text key={idx} style={[styles.msgText, isUser && styles.msgTextUser, { color: isUser ? colors.userBubbleText : colors.text }]}>
+                        {renderInline(line, isUser, colors)}
                     </Text>
                 );
             })}
@@ -106,6 +111,7 @@ const BUTTON_CONFIGS: Record<string, { icon: React.ReactNode; colors: readonly [
     suggest_redistribution:{ icon: <UserCheck size={14} color="#fff" />,   colors: ['#0EA5E9', '#0284C7'] },
     notify_members:       { icon: <Sparkles size={14} color="#fff" />,      colors: ['#8B5CF6', '#6D28D9'] },
     undo_last_action:     { icon: <RotateCcw size={14} color="#fff" />,     colors: ['#64748B', '#475569'] },
+    speak:                { icon: <Volume2 size={14} color="#fff" />,        colors: ['#22C55E', '#16A34A'] },
 };
 
 const SmartButtonRow = ({ buttons, onPress }: { buttons: SmartButton[]; onPress: (btn: SmartButton) => void }) => (
@@ -126,13 +132,15 @@ const SmartButtonRow = ({ buttons, onPress }: { buttons: SmartButton[]; onPress:
 
 // ─── Welcome Hero ─────────────────────────────────────────────────────────────
 
-const WelcomeHero = ({ onPrompt }: { onPrompt: (p: string) => void; prompts: { label: string; prompt: string }[] }) => (
-    <View style={styles.heroWrap}>
-        <LinearGradient colors={['#4338CA', '#6366F1', '#8B5CF6']} style={styles.heroAvatar}>
-            <Bot size={36} color="#fff" />
-        </LinearGradient>
-        <Text style={styles.heroTitle}>HamroAI</Text>
-        <Text style={styles.heroSub}>Your intelligent team operations assistant</Text>
+const WelcomeHero = ({ onPrompt, prompts }: { onPrompt: (p: string) => void; prompts: { label: string; prompt: string }[] }) => {
+    const { colors } = useTheme();
+    return (
+        <View style={[styles.heroWrap, { backgroundColor: colors.background }]}>
+            <LinearGradient colors={[colors.primaryDark, colors.primary, colors.primaryLight]} style={styles.heroAvatar}>
+                <Bot size={36} color="#fff" />
+            </LinearGradient>
+            <Text style={[styles.heroTitle, { color: colors.text }]}>HamroAI</Text>
+            <Text style={[styles.heroSub, { color: colors.textSecondary }]}>Your intelligent team operations assistant</Text>
         <View style={styles.heroChips}>
             {[
                 { label: '📊 Workspace summary', prompt: 'Give me a full workspace summary with overdue tasks and at-risk projects.' },
@@ -144,13 +152,18 @@ const WelcomeHero = ({ onPrompt }: { onPrompt: (p: string) => void; prompts: { l
                 { label: '📩 Invite member', prompt: 'I want to invite a new team member.' },
                 { label: '📋 My projects', prompt: 'Show me all my projects and their health status.' },
             ].map((p, i) => (
-                <TouchableOpacity key={i} style={styles.heroChip} onPress={() => onPrompt(p.prompt)} activeOpacity={0.75}>
-                    <Text style={styles.heroChipText}>{p.label}</Text>
+                <TouchableOpacity key={i} style={[styles.heroChip, { 
+                    backgroundColor: colors.card, 
+                    borderColor: colors.border,
+                    shadowColor: colors.shadow 
+                }]} onPress={() => onPrompt(p.prompt)} activeOpacity={0.75}>
+                    <Text style={[styles.heroChipText, { color: colors.text }]}>{p.label}</Text>
                 </TouchableOpacity>
             ))}
         </View>
     </View>
-);
+    );
+};
 
 // ─── Strip Markdown for TTS ───────────────────────────────────────────────────
 
@@ -171,6 +184,8 @@ export default function AIAssistantScreen() {
     const [isTranscribing, setIsTranscribing] = useState(false);
     const [showQuickPrompts, setShowQuickPrompts] = useState(true);
 
+    const { colors } = useTheme();
+    
     const {
         messages, isLoading, inputText, setInputText,
         sendMessage, transcribeAudio, clearMessages, stopGeneration,
@@ -240,6 +255,15 @@ export default function AIAssistantScreen() {
             case 'start_timer':
                 sendMessage(`Start a timer for the task${btn.id ? ` with ID ${btn.id}` : ''}.`);
                 break;
+            case 'speak':
+                if (btn.text) {
+                    Speech.speak(btn.text, {
+                        language: 'en-US',
+                        pitch: 1.0,
+                        rate: 0.9,
+                    });
+                }
+                break;
             default:
                 break;
         }
@@ -283,9 +307,9 @@ export default function AIAssistantScreen() {
     const hasMessages = messages.filter(m => m.role !== 'system').length > 0;
 
     return (
-        <View style={[styles.container, { paddingTop: insets.top }]}>
+        <View style={[styles.container, { paddingTop: insets.top, backgroundColor: colors.background }]}>
             {/* Header */}
-            <LinearGradient colors={['#1E1B4B', '#312E81', '#4338CA']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.header}>
+            <LinearGradient colors={[colors.primaryDark, colors.primary, colors.primaryLight]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.header}>
                 <TouchableOpacity style={styles.headerBtn} onPress={() => router.back()}>
                     <ArrowLeft size={20} color="#fff" />
                 </TouchableOpacity>
@@ -339,12 +363,26 @@ export default function AIAssistantScreen() {
                         return (
                             <View key={msg.id} style={[styles.msgRow, isUser ? styles.msgRowUser : styles.msgRowAI]}>
                                 {!isUser && (
-                                    <LinearGradient colors={['#4338CA', '#6366F1']} style={styles.aiAvatar}>
+                                    <LinearGradient colors={[colors.primary, colors.primaryLight]} style={styles.aiAvatar}>
                                         <Bot size={16} color="#fff" />
                                     </LinearGradient>
                                 )}
 
-                                <View style={[styles.bubble, isUser ? styles.bubbleUser : styles.bubbleAI, { maxWidth: width * 0.78 }]}>
+                                <TouchableOpacity
+                                    style={[styles.bubble, isUser ? styles.bubbleUser : styles.bubbleAI, { 
+                                        maxWidth: width * 0.78,
+                                        backgroundColor: isUser ? colors.userBubble : colors.aiBubble,
+                                        borderColor: isUser ? colors.userBubble : colors.aiBubbleBorder
+                                    }]}
+                                    activeOpacity={0.9}
+                                    onLongPress={async () => {
+                                        if (msg.content && !msg.isLoading) {
+                                            await Clipboard.setStringAsync(msg.content);
+                                            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                                            Alert.alert('✅ Copied', 'Message copied to clipboard', [{ text: 'OK' }]);
+                                        }
+                                    }}
+                                >
                                     {msg.isLoading ? (
                                         <TypingIndicator status={msg.status} />
                                     ) : (
@@ -355,23 +393,26 @@ export default function AIAssistantScreen() {
                                             )}
                                             {!isUser && msg.content.startsWith('⚠️') && lastFailedPrompt && (
                                                 <TouchableOpacity
-                                                    style={styles.retryBtn}
+                                                    style={[styles.retryBtn, { 
+                                                        backgroundColor: colors.primaryBg, 
+                                                        borderColor: colors.primary 
+                                                    }]}
                                                     onPress={retryLastMessage}
                                                     activeOpacity={0.8}
                                                 >
-                                                    <RotateCcw size={13} color="#6366F1" />
-                                                    <Text style={styles.retryText}>Retry</Text>
+                                                    <RotateCcw size={13} color={colors.primary} />
+                                                    <Text style={[styles.retryText, { color: colors.primary }]}>Retry</Text>
                                                 </TouchableOpacity>
                                             )}
-                                            <Text style={[styles.timestamp, isUser && { color: 'rgba(255,255,255,0.55)' }]}>
+                                            <Text style={[styles.timestamp, { color: isUser ? 'rgba(255,255,255,0.55)' : colors.textTertiary }]}>
                                                 {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                             </Text>
                                         </>
                                     )}
-                                </View>
+                                </TouchableOpacity>
 
                                 {isUser && (
-                                    <View style={styles.userAvatar}>
+                                    <View style={[styles.userAvatar, { backgroundColor: colors.primary }]}>
                                         <User size={16} color="#fff" />
                                     </View>
                                 )}
@@ -381,13 +422,21 @@ export default function AIAssistantScreen() {
                 </ScrollView>
 
                 {/* Input Bar */}
-                <View style={[styles.inputArea, { paddingBottom: Math.max(insets.bottom, 16) + 8 }]}>
+                <View style={[styles.inputArea, { 
+    backgroundColor: colors.surface, 
+    borderTopColor: colors.border, 
+    paddingBottom: Math.max(insets.bottom, 16) + 8 
+}]}>
                     <View style={styles.inputRow}>
                         <TextInput
                             ref={inputRef}
-                            style={styles.input}
+                            style={[styles.input, { 
+                                backgroundColor: colors.inputBg, 
+                                borderColor: colors.inputBorder, 
+                                color: colors.inputText 
+                            }]}
                             placeholder={isRecording ? '🎙 Listening...' : 'Ask HamroAI anything...'}
-                            placeholderTextColor="#94A3B8"
+                            placeholderTextColor={colors.inputPlaceholder}
                             value={inputText}
                             onChangeText={setInputText}
                             multiline
@@ -397,22 +446,29 @@ export default function AIAssistantScreen() {
                         />
 
                         {isTranscribing ? (
-                            <View style={styles.iconBtn}>
-                                <ActivityIndicator size="small" color="#6366F1" />
+                            <View style={[styles.iconBtn, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder }]}>
+                                <ActivityIndicator size="small" color={colors.primary} />
                             </View>
                         ) : (
                             <TouchableOpacity
-                                style={[styles.iconBtn, isRecording && styles.iconBtnActive]}
+                                style={[styles.iconBtn, isRecording && styles.iconBtnActive, { 
+                                    backgroundColor: colors.inputBg, 
+                                    borderColor: colors.inputBorder 
+                                }]}
                                 onPressIn={startRecording}
                                 onPressOut={stopRecording}
                                 activeOpacity={0.8}
                             >
-                                <Mic size={20} color={isRecording ? '#fff' : '#6366F1'} />
+                                <Mic size={20} color={isRecording ? '#fff' : colors.primary} />
                             </TouchableOpacity>
                         )}
 
                         <TouchableOpacity
-                            style={[styles.sendBtn, (!inputText.trim() || isLoading) && styles.sendBtnDisabled]}
+                            style={[styles.sendBtn, { 
+                                backgroundColor: colors.primary, 
+                                borderColor: colors.primary,
+                                opacity: (!inputText.trim() || isLoading) ? 0.5 : 1
+                            }]}
                             onPress={handleSend}
                             disabled={!inputText.trim() || isLoading}
                             activeOpacity={0.85}
@@ -429,8 +485,8 @@ export default function AIAssistantScreen() {
                     {!hasMessages && !showQuickPrompts && (
                         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScroll} contentContainerStyle={{ gap: 8, paddingHorizontal: 16 }}>
                             {quickPrompts.slice(0, 4).map((p, i) => (
-                                <TouchableOpacity key={i} style={styles.chip} onPress={() => handleQuickPrompt(p.prompt)}>
-                                    <Text style={styles.chipText}>{p.label}</Text>
+                                <TouchableOpacity key={i} style={[styles.chip, { backgroundColor: colors.primaryBg }]} onPress={() => handleQuickPrompt(p.prompt)}>
+                                    <Text style={[styles.chipText, { color: colors.primary }]}>{p.label}</Text>
                                 </TouchableOpacity>
                             ))}
                         </ScrollView>
@@ -444,7 +500,7 @@ export default function AIAssistantScreen() {
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#F8FAFC' },
+    container: { flex: 1 },
 
     // Header
     header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 12, gap: 10 },
@@ -465,13 +521,13 @@ const styles = StyleSheet.create({
     msgRowUser: { justifyContent: 'flex-end' },
     msgRowAI: { justifyContent: 'flex-start' },
     aiAvatar: { width: 32, height: 32, borderRadius: 10, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
-    userAvatar: { width: 32, height: 32, borderRadius: 10, backgroundColor: '#6366F1', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+    userAvatar: { width: 32, height: 32, borderRadius: 10, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
     bubble: { borderRadius: 18, paddingHorizontal: 14, paddingVertical: 11, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.07, shadowRadius: 8, elevation: 3 },
-    bubbleUser: { backgroundColor: '#4338CA', borderBottomRightRadius: 4 },
-    bubbleAI: { backgroundColor: '#fff', borderBottomLeftRadius: 4 },
+    bubbleUser: { borderBottomRightRadius: 4 },
+    bubbleAI: { borderBottomLeftRadius: 4 },
 
     // Text
-    msgText: { fontSize: 15, color: '#1E293B', lineHeight: 22 },
+    msgText: { fontSize: 15, lineHeight: 22 },
     msgTextUser: { color: '#fff' },
     boldText: { fontWeight: '700', color: '#1E293B' },
     bulletRow: { flexDirection: 'row', gap: 6, marginVertical: 1 },

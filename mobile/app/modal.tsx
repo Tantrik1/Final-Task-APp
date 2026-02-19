@@ -279,7 +279,7 @@ export default function ModalScreen() {
   const [description, setDescription] = useState('');
   const [statusName, setStatusName] = useState('');
   const [customStatusId, setCustomStatusId] = useState<string | null>(null);
-  const [priority, setPriority] = useState('medium');
+  const [priority, setPriority] = useState('low');
   const [projectId, setProjectId] = useState(initialProjectId || '');
   const [assigneeId, setAssigneeId] = useState<string | null>(null);
   const [dueDate, setDueDate] = useState<string | null>(null);
@@ -313,7 +313,7 @@ export default function ModalScreen() {
   const [showAddLink, setShowAddLink] = useState(false);
 
   // Timer
-  const completedStatus = useMemo(() => statuses.find(s => s.is_completed), [statuses]);
+  const completedStatus = useMemo(() => statuses.find(s => s.category === 'done' || s.is_completed), [statuses]);
   const {
     isRunning, displayTime, formatTime, startTimer, pauseTimer, resumeTimer,
     completeTask, sessions, firstStartedAt, completedAt, isLoading: timerLoading, elapsedTime,
@@ -359,7 +359,7 @@ export default function ModalScreen() {
         setDescription(task.description || '');
         setStatusName(task.status);
         setCustomStatusId(task.custom_status_id);
-        setPriority(task.priority);
+        setPriority(task.priority || 'low');
         setProjectId(task.project_id);
         setAssigneeId(task.assigned_to);
         setDueDate(task.due_date);
@@ -531,27 +531,14 @@ export default function ModalScreen() {
         resolvedStatusId = matched?.id || statuses.find(s => s.is_default)?.id || statuses[0]?.id;
       }
 
-      // Map custom status name to task_status enum ('todo','in_progress','review','done')
-      const resolvedStatus = resolvedStatusId ? statuses.find(s => s.id === resolvedStatusId) : null;
-      const mapToEnum = (s: any): string => {
-        if (!s) return 'todo';
-        if (s.is_completed) return 'done';
-        const n = s.name?.toLowerCase() || '';
-        if (n.includes('progress') || n.includes('doing') || n.includes('active')) return 'in_progress';
-        if (n.includes('review') || n.includes('testing') || n.includes('qa')) return 'review';
-        if (n.includes('done') || n.includes('complete') || n.includes('closed')) return 'done';
-        if (s.is_default) return 'todo';
-        return 'todo';
-      };
-
       const parsedDue = dueDateInput.trim() || null;
 
+      // Only write custom_status_id — DB trigger handles status enum, completed_at, first_started_at
       const taskData: Record<string, any> = {
         title: title.trim(),
         description: description.trim() || null,
-        status: mapToEnum(resolvedStatus),
         custom_status_id: resolvedStatusId || null,
-        priority,
+        priority: priority || 'low',
         project_id: projectId,
         assigned_to: assigneeId,
         due_date: parsedDue,
@@ -603,7 +590,7 @@ export default function ModalScreen() {
   // ─── Helpers ───
   const currentProject = projects.find(p => p.id === projectId);
   const currentStatus = statuses.find(s => s.id === customStatusId) || statuses.find(s => s.name === statusName);
-  const isCompleted = currentStatus?.is_completed || false;
+  const isCompleted = currentStatus?.category === 'done' || currentStatus?.category === 'cancelled' || currentStatus?.is_completed || false;
   const assignee = members.find(m => m.id === assigneeId);
 
   const formatTimeFull = (seconds: number) => {
@@ -683,7 +670,7 @@ export default function ModalScreen() {
             <Text style={s.fieldLabel}>Priority</Text>
             <View style={s.fieldValue}>
               <Flag size={13} color={PRIORITIES.find(p => p.value === priority)?.color || '#94A3B8'} />
-              <Text style={s.fieldValueText}>{PRIORITIES.find(p => p.value === priority)?.label || 'Medium'}</Text>
+              <Text style={s.fieldValueText}>{PRIORITIES.find(p => p.value === priority)?.label || 'Low'}</Text>
               <ChevronDown size={14} color="#94A3B8" />
             </View>
           </TouchableOpacity>
@@ -1136,7 +1123,7 @@ export default function ModalScreen() {
         visible={showStatusPicker}
         onClose={() => setShowStatusPicker(false)}
         title="Select Status"
-        options={statuses.map(st => ({ value: st.id, label: st.name, color: st.color, subtitle: st.is_default ? 'Default' : st.is_completed ? 'Completed' : undefined }))}
+        options={statuses.map(st => ({ value: st.id, label: st.name, color: st.color, subtitle: st.category === 'done' || st.category === 'cancelled' ? 'Completed' : st.is_default ? 'Default' : undefined }))}
         selectedValue={customStatusId}
         onSelect={(val: string) => { setCustomStatusId(val); const st = statuses.find(s => s.id === val); if (st) setStatusName(st.name); }}
       />
@@ -1145,7 +1132,7 @@ export default function ModalScreen() {
         onClose={() => setShowPriorityPicker(false)}
         title="Select Priority"
         options={PRIORITIES.map(p => ({ value: p.value, label: p.label, color: p.color }))}
-        selectedValue={priority}
+        selectedValue={priority || 'low'}
         onSelect={setPriority}
       />
       <PickerModal

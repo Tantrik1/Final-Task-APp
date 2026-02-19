@@ -1,0 +1,25 @@
+project_id = "hxbkqbvmyrfggkoybugz"
+
+[functions.send-invitation]
+verify_jwt = false
+
+[functions.get-invitation]
+verify_jwt = false
+
+[functions.create-workspace]
+verify_jwt = false
+
+[functions.send-payment-notification]
+verify_jwt = false
+
+[functions.get-vapid-public-key]
+verify_jwt = false
+
+[functions.send-push-notification]
+verify_jwt = false
+
+[functions.remove-member]
+verify_jwt = false
+
+[functions.send-due-date-reminders]
+verify_jwt = false

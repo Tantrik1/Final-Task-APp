@@ -13,34 +13,55 @@ export interface TaskSession {
     session_type?: 'start' | 'resume';
 }
 
+// ─── Timer State Machine ────────────────────────────────────────────
+// IDLE ──[play]──▶ RUNNING ──[pause]──▶ PAUSED ──[resume]──▶ RUNNING
+//                     │                    │
+//                  [stop]               [stop]     → closes session, no status change
+//                  [complete]           [complete]  → closes session, moves to done
+//                     ▼                    ▼
+//                   IDLE                  IDLE / COMPLETED
+
+export type TimerPhase = 'idle' | 'running' | 'paused' | 'completed';
+
 interface TaskTimerState {
+    phase: TimerPhase;
     isRunning: boolean;
-    totalWorkTime: number; // in seconds
+    totalWorkTime: number;
     currentSessionStart: Date | null;
     sessions: TaskSession[];
     firstStartedAt: Date | null;
     completedAt: Date | null;
+    currentStatusCategory: string | null;
+}
+
+interface ProjectStatus {
+    id: string;
+    name: string;
+    category: string;
+    is_default: boolean;
+    is_completed: boolean;
 }
 
 export function useTaskTimer(taskId: string, completedStatusId?: string) {
     const { user } = useAuth();
     const [state, setState] = useState<TaskTimerState>({
+        phase: 'idle',
         isRunning: false,
         totalWorkTime: 0,
         currentSessionStart: null,
         sessions: [],
         firstStartedAt: null,
         completedAt: null,
+        currentStatusCategory: null,
     });
     const [isLoading, setIsLoading] = useState(true);
     const [elapsedTime, setElapsedTime] = useState(0);
+    const [projectStatuses, setProjectStatuses] = useState<ProjectStatus[]>([]);
 
-    // Ref to track state for background updates
     const stateRef = useRef(state);
-    useEffect(() => {
-        stateRef.current = state;
-    }, [state]);
+    useEffect(() => { stateRef.current = state; }, [state]);
 
+    // ─── Fetch all data ─────────────────────────────────────────────
     const fetchData = useCallback(async () => {
         if (!taskId) return;
 
@@ -48,7 +69,7 @@ export function useTaskTimer(taskId: string, completedStatusId?: string) {
             const [taskResult, sessionsResult] = await Promise.all([
                 supabase
                     .from('tasks')
-                    .select('first_started_at, completed_at, total_work_time, is_timer_running')
+                    .select('project_id, custom_status_id, first_started_at, completed_at, total_work_time, is_timer_running')
                     .eq('id', taskId)
                     .maybeSingle(),
                 supabase
@@ -59,103 +80,157 @@ export function useTaskTimer(taskId: string, completedStatusId?: string) {
             ]);
 
             if (taskResult.error) throw taskResult.error;
-
             const task = taskResult.data;
             if (!task) return;
 
+            // Fetch project statuses for auto-transitions
+            const { data: statuses } = await supabase
+                .from('project_statuses')
+                .select('id, name, category, is_default, is_completed')
+                .eq('project_id', task.project_id)
+                .order('position');
+            setProjectStatuses(statuses || []);
+
+            // Determine current status category
+            const currentStatus = (statuses || []).find(s => s.id === task.custom_status_id);
+            const currentCategory = currentStatus?.category || null;
+
             const sessionsRaw = (sessionsResult.data || []) as any[];
-            // Enrich sessions with session_type
             const sessions: TaskSession[] = sessionsRaw.reverse().map((s, idx) => ({
                 ...s,
                 session_type: idx === 0 ? 'start' : 'resume',
             })).reverse();
 
+            // Derive running state from open session (source of truth, not denormalized field)
             const openSession = sessions.find(s => !s.ended_at);
+            const isRunning = !!openSession;
+
+            // Derive phase
+            let phase: TimerPhase = 'idle';
+            if (currentCategory === 'done' || currentCategory === 'cancelled') {
+                phase = 'completed';
+            } else if (isRunning) {
+                phase = 'running';
+            } else if (sessions.length > 0 && !openSession) {
+                phase = 'paused';
+            }
 
             setState({
-                isRunning: task.is_timer_running || false,
+                phase,
+                isRunning,
                 totalWorkTime: task.total_work_time || 0,
                 currentSessionStart: openSession ? new Date(openSession.started_at) : null,
                 sessions,
                 firstStartedAt: task.first_started_at ? new Date(task.first_started_at) : null,
                 completedAt: task.completed_at ? new Date(task.completed_at) : null,
+                currentStatusCategory: currentCategory,
             });
         } catch (error) {
-            console.error('[useTaskTimer] Error fetching data:', error);
+            console.error('[Timer] Error fetching data:', error);
         } finally {
             setIsLoading(false);
         }
     }, [taskId]);
 
-    // Initial fetch and subscription
+    // ─── Realtime subscription ──────────────────────────────────────
     useEffect(() => {
         fetchData();
-
         if (!taskId) return;
 
         const channel = supabase
             .channel(`timer-${taskId}`)
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks', filter: `id=eq.${taskId}` }, () => {
-                console.log('[Timer] Task updated, refreshing...');
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks', filter: `id=eq.${taskId}` }, (payload) => {
+                console.log('[Timer] Task changed via realtime');
                 fetchData();
             })
             .on('postgres_changes', { event: '*', schema: 'public', table: 'task_work_sessions', filter: `task_id=eq.${taskId}` }, () => {
-                console.log('[Timer] Sessions updated, refreshing...');
+                console.log('[Timer] Session changed via realtime');
                 fetchData();
             })
             .subscribe();
 
-        return () => {
-            console.log('[Timer] Unsubscribing...');
-            supabase.removeChannel(channel);
-        };
+        return () => { supabase.removeChannel(channel); };
     }, [taskId, fetchData]);
 
-    // Update elapsed time every second when running
+    // ─── Tick every second when running ─────────────────────────────
     useEffect(() => {
         if (!state.isRunning || !state.currentSessionStart) {
             setElapsedTime(0);
             return;
         }
+        // Immediate calc
+        setElapsedTime(Math.floor((Date.now() - state.currentSessionStart.getTime()) / 1000));
 
         const interval = setInterval(() => {
-            const now = new Date();
-            const elapsed = Math.floor((now.getTime() - state.currentSessionStart!.getTime()) / 1000);
-            setElapsedTime(elapsed);
+            setElapsedTime(Math.floor((Date.now() - state.currentSessionStart!.getTime()) / 1000));
         }, 1000);
 
         return () => clearInterval(interval);
     }, [state.isRunning, state.currentSessionStart]);
 
+    // ─── Helper: close open session ─────────────────────────────────
+    const closeOpenSession = async (): Promise<number> => {
+        const openSession = stateRef.current.sessions.find(s => !s.ended_at);
+        if (!openSession || !stateRef.current.currentSessionStart) return 0;
+
+        const now = new Date();
+        const duration = Math.floor((now.getTime() - stateRef.current.currentSessionStart.getTime()) / 1000);
+
+        await supabase.from('task_work_sessions').update({
+            ended_at: now.toISOString(),
+            duration_seconds: duration,
+        }).eq('id', openSession.id);
+
+        // Update total_work_time on task
+        const { data: latest } = await supabase.from('tasks').select('total_work_time').eq('id', taskId).single();
+        const newTotal = (latest?.total_work_time || 0) + duration;
+        await supabase.from('tasks').update({
+            is_timer_running: false,
+            total_work_time: newTotal,
+        }).eq('id', taskId);
+
+        return duration;
+    };
+
+    // ─── Helper: auto-move to active status ─────────────────────────
+    const autoMoveToActive = async () => {
+        const cat = stateRef.current.currentStatusCategory;
+        if (cat === 'todo') {
+            // Find the first 'active' status in the project
+            const activeStatus = projectStatuses.find(s => s.category === 'active');
+            if (activeStatus) {
+                console.log('[Timer] Auto-moving task to active status:', activeStatus.name);
+                // Only write custom_status_id — DB trigger handles status enum, completed_at, first_started_at
+                await supabase.from('tasks').update({ custom_status_id: activeStatus.id }).eq('id', taskId);
+            }
+        }
+    };
+
+    // ═════════════════════════════════════════════════════════════════
+    // ACTIONS
+    // ═════════════════════════════════════════════════════════════════
+
+    /** ▶ PLAY — Start timer from idle. Auto-moves task to active status. */
     const startTimer = async () => {
         if (!user) return;
-        console.log('[Timer] Starting timer...');
+        console.log('[Timer] ▶ START');
 
         try {
             const now = new Date().toISOString();
-            const isFirstStart = !state.firstStartedAt;
 
-            // Update task
-            const { error: taskError } = await supabase
-                .from('tasks')
-                .update({
-                    is_timer_running: true,
-                    ...(isFirstStart && { first_started_at: now }),
-                })
-                .eq('id', taskId);
+            // Auto-move to active status if in todo
+            await autoMoveToActive();
 
-            if (taskError) throw taskError;
+            // Set timer running on task
+            await supabase.from('tasks').update({ is_timer_running: true }).eq('id', taskId);
 
-            // Create session
-            const { error: sessionError } = await supabase
-                .from('task_work_sessions')
-                .insert({
-                    task_id: taskId,
-                    user_id: user.id,
-                    started_at: now,
-                });
+            // Create work session
+            await supabase.from('task_work_sessions').insert({
+                task_id: taskId,
+                user_id: user.id,
+                started_at: now,
+            });
 
-            if (sessionError) throw sessionError;
             await fetchData();
         } catch (error) {
             console.error('[Timer] Start error:', error);
@@ -163,46 +238,15 @@ export function useTaskTimer(taskId: string, completedStatusId?: string) {
         }
     };
 
+    /** ⏸ PAUSE — Pause timer, close session. Status stays the same. Returns session duration. */
     const pauseTimer = async (): Promise<number> => {
-        if (!user || !state.currentSessionStart) return 0;
-        console.log('[Timer] Pausing timer...');
+        if (!user || !state.isRunning) return 0;
+        console.log('[Timer] ⏸ PAUSE');
 
         try {
-            const now = new Date();
-            const sessionDuration = Math.floor((now.getTime() - state.currentSessionStart.getTime()) / 1000);
-
-            // Fetch latest task data to avoid drift
-            const { data: latestTask } = await supabase
-                .from('tasks')
-                .select('total_work_time')
-                .eq('id', taskId)
-                .single();
-
-            const currentTotal = latestTask?.total_work_time || 0;
-
-            // Close session
-            const openSession = state.sessions.find(s => !s.ended_at);
-            if (openSession) {
-                await supabase
-                    .from('task_work_sessions')
-                    .update({
-                        ended_at: now.toISOString(),
-                        duration_seconds: sessionDuration,
-                    })
-                    .eq('id', openSession.id);
-            }
-
-            // Update task
-            await supabase
-                .from('tasks')
-                .update({
-                    is_timer_running: false,
-                    total_work_time: currentTotal + sessionDuration,
-                })
-                .eq('id', taskId);
-
+            const duration = await closeOpenSession();
             await fetchData();
-            return sessionDuration;
+            return duration;
         } catch (error) {
             console.error('[Timer] Pause error:', error);
             Alert.alert('Error', 'Failed to pause timer');
@@ -210,9 +254,11 @@ export function useTaskTimer(taskId: string, completedStatusId?: string) {
         }
     };
 
+    /** ▶ RESUME — Resume from paused state. Does NOT change status. */
     const resumeTimer = async () => {
         if (!user) return;
-        console.log('[Timer] Resuming timer...');
+        console.log('[Timer] ▶ RESUME');
+
         try {
             const now = new Date().toISOString();
             await supabase.from('tasks').update({ is_timer_running: true }).eq('id', taskId);
@@ -224,67 +270,77 @@ export function useTaskTimer(taskId: string, completedStatusId?: string) {
             await fetchData();
         } catch (error) {
             console.error('[Timer] Resume error:', error);
+            Alert.alert('Error', 'Failed to resume timer');
         }
     };
 
-    const completeTask = async () => {
-        if (!user) return;
-        console.log('[Timer] Completing task...');
+    /** ⏹ STOP — Stop timer completely, close session. Does NOT change status. */
+    const stopTimer = async (): Promise<number> => {
+        if (!user) return 0;
+        console.log('[Timer] ⏹ STOP');
 
         try {
-            const now = new Date();
+            const duration = state.isRunning ? await closeOpenSession() : 0;
+            await fetchData();
+            return duration;
+        } catch (error) {
+            console.error('[Timer] Stop error:', error);
+            Alert.alert('Error', 'Failed to stop timer');
+            return 0;
+        }
+    };
 
-            // Fetch latest task data
-            const { data: latestTask } = await supabase
-                .from('tasks')
-                .select('total_work_time')
-                .eq('id', taskId)
-                .single();
+    /** ✓ COMPLETE — Stop timer and mark task as done via custom_status_id. */
+    const completeTask = async () => {
+        if (!user) return;
+        console.log('[Timer] ✓ COMPLETE');
 
-            let finalTotal = latestTask?.total_work_time || 0;
-
-            const openSession = state.sessions.find(s => !s.ended_at);
-            if (openSession && state.currentSessionStart) {
-                const sessionDuration = Math.floor((now.getTime() - state.currentSessionStart.getTime()) / 1000);
-                finalTotal += sessionDuration;
-
-                await supabase
-                    .from('task_work_sessions')
-                    .update({
-                        ended_at: now.toISOString(),
-                        duration_seconds: sessionDuration,
-                    })
-                    .eq('id', openSession.id);
+        try {
+            // Close any open session first
+            if (state.isRunning) {
+                await closeOpenSession();
             }
 
-            const updateData: any = {
-                is_timer_running: false,
-                completed_at: now.toISOString(),
-                total_work_time: finalTotal,
-            };
-            if (completedStatusId) updateData.custom_status_id = completedStatusId;
+            // Move to completed status — only write custom_status_id
+            // DB trigger handles: status enum, completed_at, first_started_at
+            if (completedStatusId) {
+                await supabase.from('tasks').update({
+                    custom_status_id: completedStatusId,
+                }).eq('id', taskId);
+            } else {
+                // Fallback: find done status from project
+                const doneStatus = projectStatuses.find(s => s.category === 'done' || s.is_completed);
+                if (doneStatus) {
+                    await supabase.from('tasks').update({
+                        custom_status_id: doneStatus.id,
+                    }).eq('id', taskId);
+                }
+            }
 
-            await supabase.from('tasks').update(updateData).eq('id', taskId);
             await fetchData();
         } catch (error) {
             console.error('[Timer] Complete error:', error);
+            Alert.alert('Error', 'Failed to complete task');
         }
     };
 
+    /** 🗑 DELETE SESSION — Remove a session and adjust total_work_time. */
     const deleteSession = async (sessionId: string) => {
         try {
             const session = state.sessions.find(s => s.id === sessionId);
             if (!session) return;
 
+            // If deleting the active session, stop the timer
             if (!session.ended_at) {
                 await supabase.from('tasks').update({ is_timer_running: false }).eq('id', taskId);
             }
 
+            // Subtract duration from total
             if (session.duration_seconds) {
                 const { data: latest } = await supabase.from('tasks').select('total_work_time').eq('id', taskId).single();
                 const currentTotal = latest?.total_work_time || 0;
                 await supabase.from('tasks').update({
-                    total_work_time: Math.max(0, currentTotal - session.duration_seconds)
+                    total_work_time: Math.max(0, currentTotal - session.duration_seconds),
                 }).eq('id', taskId);
             }
 
@@ -292,9 +348,11 @@ export function useTaskTimer(taskId: string, completedStatusId?: string) {
             await fetchData();
         } catch (error) {
             console.error('[Timer] Delete session error:', error);
+            Alert.alert('Error', 'Failed to delete session');
         }
     };
 
+    // ─── Formatters ─────────────────────────────────────────────────
     const formatTime = (seconds: number) => {
         const h = Math.floor(seconds / 3600);
         const m = Math.floor((seconds % 3600) / 60);
@@ -326,11 +384,15 @@ export function useTaskTimer(taskId: string, completedStatusId?: string) {
         elapsedTime,
         displayTime: state.totalWorkTime + elapsedTime,
         isLoading,
+        projectStatuses,
+        // Actions
         startTimer,
         pauseTimer,
         resumeTimer,
+        stopTimer,
         completeTask,
         deleteSession,
+        // Formatters
         formatTime,
         formatTimeWithSeconds,
         formatTimeLive,

@@ -15,6 +15,7 @@ import {
   CheckCircle2,
   X,
 } from 'lucide-react-native';
+import { useTheme } from '@/contexts/ThemeContext';
 
 interface TimerPauseModalProps {
   visible: boolean;
@@ -33,6 +34,7 @@ export function TimerPauseModal({
   currentStatusId,
   onStatusChange,
 }: TimerPauseModalProps) {
+  const { colors } = useTheme();
   const [selectedStatusId, setSelectedStatusId] = useState<string | null>(currentStatusId);
 
   const handleConfirm = () => {
@@ -44,36 +46,36 @@ export function TimerPauseModal({
   };
 
   const getStatusIcon = (status: any) => {
-    if (status.is_completed) return CheckCircle2;
-    const n = status.name?.toLowerCase() || '';
-    if (n.includes('progress') || n.includes('doing')) return TrendingUp;
-    if (n.includes('review') || n.includes('testing')) return Eye;
+    const cat = status.category;
+    if (cat === 'done' || cat === 'cancelled' || status.is_completed) return CheckCircle2;
+    if (cat === 'active') return TrendingUp;
+    // 'backlog' category removed; fallback to Target
     return Target;
   };
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={onClose}>
-        <TouchableOpacity style={styles.sheet} activeOpacity={1} onPress={() => {}}>
-          <View style={styles.handle} />
+        <TouchableOpacity style={[styles.sheet, { backgroundColor: colors.card }]} activeOpacity={1} onPress={() => {}}>
+          <View style={[styles.handle, { backgroundColor: colors.border }]} />
 
           {/* Header */}
           <View style={styles.header}>
             <View style={styles.headerIcon}>
-              <Clock size={20} color="#F97316" />
+              <Clock size={20} color={colors.primary} />
             </View>
             <View>
-              <Text style={styles.title}>Timer Paused</Text>
-              <Text style={styles.subtitle}>
-                You worked for <Text style={styles.durationText}>{sessionDuration}</Text>
+              <Text style={[styles.title, { color: colors.text }]}>Timer Paused</Text>
+              <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
+                You worked for <Text style={[styles.durationText, { color: colors.primary }]}>{sessionDuration}</Text>
               </Text>
             </View>
             <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
-              <X size={20} color="#94A3B8" />
+              <X size={20} color={colors.textTertiary} />
             </TouchableOpacity>
           </View>
 
-          <Text style={styles.prompt}>Update task status?</Text>
+          <Text style={[styles.prompt, { color: colors.textTertiary }]}>Update task status?</Text>
 
           {/* Status options */}
           <View style={styles.options}>
@@ -87,7 +89,8 @@ export function TimerPauseModal({
                   key={status.id}
                   style={[
                     styles.option,
-                    isSelected && { borderColor: status.color || '#F97316', backgroundColor: (status.color || '#F97316') + '08' },
+                    { backgroundColor: colors.surface, borderColor: colors.border },
+                    isSelected && { borderColor: status.color || colors.primary, backgroundColor: (status.color || colors.primary) + '08' },
                   ]}
                   onPress={() => setSelectedStatusId(status.id)}
                 >
@@ -96,9 +99,9 @@ export function TimerPauseModal({
                   </View>
                   <View style={{ flex: 1 }}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                      <Text style={[styles.optionLabel, isSelected && { color: status.color || '#F97316' }]}>{status.name}</Text>
+                      <Text style={[styles.optionLabel, { color: colors.text }, isSelected && { color: status.color || colors.primary }]}>{status.name}</Text>
                       {isCurrent && (
-                        <View style={styles.currentBadge}><Text style={styles.currentBadgeText}>Current</Text></View>
+                        <View style={[styles.currentBadge, { backgroundColor: colors.surface }]}><Text style={[styles.currentBadgeText, { color: colors.textTertiary }]}>Current</Text></View>
                       )}
                     </View>
                   </View>
@@ -114,10 +117,10 @@ export function TimerPauseModal({
 
           {/* Actions */}
           <View style={styles.actions}>
-            <TouchableOpacity style={styles.keepBtn} onPress={onClose}>
-              <Text style={styles.keepText}>Keep Current</Text>
+            <TouchableOpacity style={[styles.keepBtn, { backgroundColor: colors.surface }]} onPress={onClose}>
+              <Text style={[styles.keepText, { color: colors.textSecondary }]}>Keep Current</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.updateBtn} onPress={handleConfirm}>
+            <TouchableOpacity style={[styles.updateBtn, { backgroundColor: colors.primary }]} onPress={handleConfirm}>
               <CheckCircle2 size={15} color="#FFF" />
               <Text style={styles.updateText}>Update Status</Text>
             </TouchableOpacity>

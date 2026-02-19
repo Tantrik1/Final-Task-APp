@@ -13,6 +13,7 @@ import {
     ListTodo
 } from 'lucide-react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withSpring, withTiming, FadeIn } from 'react-native-reanimated';
+import { useTheme } from '@/contexts/ThemeContext';
 
 // Fixed constants
 const TAB_BAR_HEIGHT = 55;
@@ -23,15 +24,15 @@ const TabIcon = ({
     Icon,
     isActive,
     label,
-    color,
     onPress
 }: {
     Icon: any,
     isActive: boolean,
     label: string,
-    color: string,
     onPress: () => void
 }) => {
+    const { colors, colorScheme } = useTheme();
+    const isDark = colorScheme === 'dark';
     const scale = useSharedValue(1);
 
     const animatedStyle = useAnimatedStyle(() => ({
@@ -45,6 +46,10 @@ const TabIcon = ({
         onPress();
     };
 
+    const iconColor = isActive
+        ? (isDark ? '#FFFFFF' : '#000000')
+        : (isDark ? '#9CA3AF' : '#6B7280');
+
     return (
         <TouchableOpacity
             onPress={handlePress}
@@ -55,10 +60,10 @@ const TabIcon = ({
             <Animated.View style={[styles.iconWrapper, animatedStyle]}>
                 <Icon
                     size={24}
-                    color={isActive ? color : '#F97316'}
+                    color={iconColor}
                     strokeWidth={isActive ? 2.5 : 2}
                 />
-                <Text style={[styles.tabLabel, { color: isActive ? color : '#F97316' }]}>
+                <Text style={[styles.tabLabel, { color: iconColor }]}>
                     {label}
                 </Text>
             </Animated.View>
@@ -67,6 +72,8 @@ const TabIcon = ({
 };
 
 const CenterButton = ({ onPress }: { onPress: () => void }) => {
+    const { colors, colorScheme } = useTheme();
+    const isDark = colorScheme === 'dark';
     const scale = useSharedValue(1);
 
     const animatedStyle = useAnimatedStyle(() => ({
@@ -83,18 +90,22 @@ const CenterButton = ({ onPress }: { onPress: () => void }) => {
     return (
         <TouchableOpacity
             activeOpacity={0.9}
-            style={styles.centerBtnContainer}
+            style={[styles.centerBtnContainer, { 
+                backgroundColor: isDark ? '#1F2937' : '#FFFFFF',
+                shadowColor: isDark ? '#000000' : '#000000'
+            }]}
             onPress={handlePress}
         >
             <Animated.View style={[styles.centerBtn, animatedStyle]}>
-                <LinearGradient
-                    colors={['rgba(94, 42, 40, 1)', '#EA580C']}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                    style={styles.centerBtnGradient}
-                >
-                    <CheckSquare size={30} color="#FFFFFF" strokeWidth={2.5} />
-                </LinearGradient>
+                <View style={[styles.centerBtnInner, { 
+                    backgroundColor: isDark ? '#374151' : '#F97316'
+                }]}>
+                    <CheckSquare 
+                        size={30} 
+                        color={isDark ? '#FFFFFF' : '#000000'} 
+                        strokeWidth={2.5} 
+                    />
+                </View>
             </Animated.View>
         </TouchableOpacity>
     );
@@ -105,13 +116,15 @@ export const GlobalTabBar = () => {
     const pathname = usePathname();
     const insets = useSafeAreaInsets();
     const { width } = useWindowDimensions();
+    const { colors, colorScheme } = useTheme();
+    const isDark = colorScheme === 'dark';
 
     const tabs = [
-        { id: 'calendar', label: 'Calendar', Icon: Calendar, route: '/calendar', color: '#8B5CF6' }, // Violet
-        { id: 'index', label: 'Home', Icon: Home, route: '/', color: '#683310ff' }, // Brown
-        { id: 'tasks', label: 'Tasks', Icon: CheckSquare, route: '/tasks', color: '#10B981' }, // Emerald
-        { id: 'projects', label: 'Projects', Icon: FolderKanban, route: '/projects', color: '#EC4899' }, // Pink
-        { id: 'chat', label: 'Chat', Icon: MessageSquare, route: '/chat', color: '#3B82F6' }, // Blue
+        { id: 'calendar', label: 'Calendar', Icon: Calendar, route: '/calendar' },
+        { id: 'index', label: 'Home', Icon: Home, route: '/' },
+        { id: 'tasks', label: 'Tasks', Icon: CheckSquare, route: '/tasks' },
+        { id: 'projects', label: 'Projects', Icon: FolderKanban, route: '/projects' },
+        { id: 'chat', label: 'Chat', Icon: MessageSquare, route: '/chat' },
     ];
 
     // Layout: [Calendar, Home]  [Tasks]  [Projects, Chat]
@@ -155,15 +168,12 @@ export const GlobalTabBar = () => {
             <View style={[styles.barWrapper, { height: TAB_BAR_HEIGHT + insets.bottom }]}>
                 {/* Background Shape */}
                 <Svg width={width} height={TAB_BAR_HEIGHT + insets.bottom + 50} style={styles.svgBg}>
-                    <Defs>
-                        <SvgGradient id="bgGrad" x1="0" y1="0" x2="0" y2="1">
-                            <Stop offset="0" stopColor="#ffffffff" stopOpacity="1" />
-                            <Stop offset="0.4" stopColor="#ffffffff" stopOpacity="1" />
-                            <Stop offset="1" stopColor="#ffffffff" stopOpacity="1" />
-                        </SvgGradient>
-                    </Defs>
-                    {/* Shadow simulation using view shadow instead for simplicity */}
-                    <Path d={path} fill="url(#bgGrad)" stroke="#F1F5F9" strokeWidth="1" />
+                    <Path 
+                        d={path} 
+                        fill={isDark ? '#1F2937' : '#FFFFFF'} 
+                        stroke={isDark ? '#374151' : '#E5E7EB'} 
+                        strokeWidth="1" 
+                    />
                 </Svg>
 
                 <View style={[styles.contentContainer, { paddingBottom: insets.bottom }]}>
@@ -174,7 +184,6 @@ export const GlobalTabBar = () => {
                                 key={tab.id}
                                 Icon={tab.Icon}
                                 label={tab.label}
-                                color={tab.color}
                                 isActive={isActive(tab.route)}
                                 onPress={() => router.push(tab.route as any)}
                             />
@@ -191,7 +200,6 @@ export const GlobalTabBar = () => {
                                 key={tab.id}
                                 Icon={tab.Icon}
                                 label={tab.label}
-                                color={tab.color}
                                 isActive={isActive(tab.route)}
                                 onPress={() => router.push(tab.route as any)}
                             />
@@ -297,9 +305,10 @@ const styles = StyleSheet.create({
         borderRadius: (CENTER_BUTTON_SIZE - 10) / 2,
         overflow: 'hidden',
     },
-    centerBtnGradient: {
+    centerBtnInner: {
         flex: 1,
         alignItems: 'center',
         justifyContent: 'center',
+        borderRadius: (CENTER_BUTTON_SIZE - 10) / 2,
     }
 });

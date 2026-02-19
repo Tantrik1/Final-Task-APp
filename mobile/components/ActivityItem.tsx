@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
+import { useTheme } from '@/contexts/ThemeContext';
 import {
     Clock,
     MessageCircle,
@@ -106,27 +107,30 @@ const getActivityIcon = (type: string, entityType: string) => {
 };
 
 export function ActivityItem({ activity, isLast, onPress }: ActivityItemProps) {
+    const { colors, colorScheme } = useTheme();
+    const isDark = colorScheme === 'dark';
     const { icon: IconComponent, color, bg } = getActivityIcon(activity.action_type, activity.entity_type);
     const actorName = activity.actor?.full_name || activity.actor?.email?.split('@')[0] || '';
+    const adaptedBg = isDark ? color + '20' : bg;
 
     const Wrapper = onPress ? TouchableOpacity : View;
 
     return (
         <Wrapper style={styles.timelineItem} onPress={onPress} activeOpacity={0.7}>
             {/* Timeline line connector */}
-            {!isLast && <View style={styles.timelineLine} />}
+            {!isLast && <View style={[styles.timelineLine, { backgroundColor: colors.border }]} />}
 
             {/* Icon or Avatar */}
             <View style={styles.iconCol}>
                 {activity.actor?.avatar_url ? (
-                    <View style={[styles.avatarWrap, { borderColor: bg }]}>
+                    <View style={[styles.avatarWrap, { borderColor: adaptedBg }]}>
                         <Image source={{ uri: activity.actor.avatar_url }} style={styles.avatarImg} />
-                        <View style={[styles.miniIcon, { backgroundColor: bg }]}>
+                        <View style={[styles.miniIcon, { backgroundColor: adaptedBg, borderColor: colors.card }]}>
                             <IconComponent size={10} color={color} />
                         </View>
                     </View>
                 ) : (
-                    <View style={[styles.timelineIcon, { backgroundColor: bg }]}>
+                    <View style={[styles.timelineIcon, { backgroundColor: adaptedBg }]}>
                         <IconComponent size={14} color={color} />
                     </View>
                 )}
@@ -134,14 +138,14 @@ export function ActivityItem({ activity, isLast, onPress }: ActivityItemProps) {
 
             {/* Content */}
             <View style={styles.timelineContent}>
-                <Text style={styles.timelineTitle}>{activity.description}</Text>
+                <Text style={[styles.timelineTitle, { color: colors.text }]}>{activity.description}</Text>
                 <View style={styles.metaRow}>
-                    <Text style={styles.timelineTime}>
+                    <Text style={[styles.timelineTime, { color: colors.textTertiary }]}>
                         {formatActivityTime(activity.created_at)}
                     </Text>
                     {activity.metadata?.field && (
-                        <View style={styles.fieldBadge}>
-                            <Text style={styles.fieldBadgeText}>{formatFieldName(activity.metadata.field)}</Text>
+                        <View style={[styles.fieldBadge, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                            <Text style={[styles.fieldBadgeText, { color: colors.textSecondary }]}>{formatFieldName(activity.metadata.field)}</Text>
                         </View>
                     )}
                 </View>

@@ -10,7 +10,6 @@ import {
     Platform,
     Modal,
     Dimensions,
-    KeyboardAvoidingView,
     Keyboard,
     ScrollView,
     Pressable,
@@ -62,6 +61,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
+import { useTheme } from '@/contexts/ThemeContext';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -95,13 +95,14 @@ export function CreateTaskModal({ visible, onClose, initialProjectId, initialDue
     const insets = useSafeAreaInsets();
     const { user } = useAuth();
     const { currentWorkspace } = useWorkspace();
+    const { colors } = useTheme();
 
     // -- State --
     const [title, setTitle] = useState('');
     const [description, setDescription] = useState('');
-    const [priority, setPriority] = useState('medium');
+    const [priority, setPriority] = useState('low');
     const [projectId, setProjectId] = useState(initialProjectId || '');
-    const [assigneeId, setAssigneeId] = useState<string | null>(null);
+    const [assigneeIds, setAssigneeIds] = useState<string[]>([]);
     const [dueDateInput, setDueDateInput] = useState('');
     const [customStatusId, setCustomStatusId] = useState<string | null>(null);
     const [statusName, setStatusName] = useState('');
@@ -147,12 +148,13 @@ export function CreateTaskModal({ visible, onClose, initialProjectId, initialDue
     const resetForm = () => {
         setTitle('');
         setDescription('');
-        setPriority('medium');
-        setAssigneeId(null);
+        setPriority('low');
+        setAssigneeIds([]);
         setDueDateInput(initialDueDate || '');
         setCustomStatusId(null);
         setStatusName('');
         if (initialProjectId) setProjectId(initialProjectId);
+        // Don't clear projectId if no initialProjectId — fetchInitialData will set it
     };
 
     const fetchInitialData = async () => {
@@ -167,7 +169,7 @@ export function CreateTaskModal({ visible, onClose, initialProjectId, initialDue
             // Correctly mapping profile IDs to the assignee selection
             setMembers(membersRes.data?.map((m: any) => m.profiles).filter(Boolean) || []);
 
-            if (!projectId && projectsRes.data && projectsRes.data.length > 0) {
+            if (projectsRes.data && projectsRes.data.length > 0 && !initialProjectId) {
                 setProjectId(projectsRes.data[0].id);
             }
         } catch (error) {
@@ -202,41 +204,36 @@ export function CreateTaskModal({ visible, onClose, initialProjectId, initialDue
     };
 
     const handleCreate = async () => {
-        if (!title.trim() || !projectId || !user) return;
+        if (!title.trim()) return;
+        if (!projectId) {
+            Alert.alert('No Project', 'Please select a project first.');
+            return;
+        }
+        if (!user) return;
         triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
         setIsSaving(true);
         try {
-            const resolvedStatus = statuses.find(s => s.id === customStatusId);
-            const mapToEnum = (s: any): string => {
-                if (s?.is_completed) return 'done';
-                const n = s?.name?.toLowerCase() || '';
-                if (n.includes('progress') || n.includes('doing')) return 'in_progress';
-                if (n.includes('review')) return 'review';
-                return 'todo';
-            };
-
+            // Only write custom_status_id — DB trigger handles status enum, completed_at
             const { data: newTask, error } = await supabase.from('tasks').insert([{
                 title: title.trim(),
                 description: description.trim() || null,
-                status: mapToEnum(resolvedStatus),
                 custom_status_id: customStatusId,
-                priority,
+                priority: priority || 'low',
                 project_id: projectId,
-                assigned_to: assigneeId,
+                assigned_to: assigneeIds.length > 0 ? assigneeIds[0] : null,
                 due_date: dueDateInput || null,
-                created_by: user.id,
-                workspace_id: currentWorkspace?.id
+                created_by: user.id
             }]).select('id').single();
 
             if (error) throw error;
 
-            if (assigneeId && newTask) {
-                // Ensure the member is correctly assigned
-                await supabase.from('task_assignees').insert({
+            if (assigneeIds.length > 0 && newTask) {
+                const assigneeRows = assigneeIds.map(uid => ({
                     task_id: newTask.id,
-                    user_id: assigneeId,
+                    user_id: uid,
                     assigned_by: user.id
-                });
+                }));
+                await supabase.from('task_assignees').insert(assigneeRows);
             }
 
             if (Platform.OS !== 'web') {
@@ -269,28 +266,25 @@ export function CreateTaskModal({ visible, onClose, initialProjectId, initialDue
             <Animated.View style={[styles.overlay, modalStyle]}>
                 <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
 
-                <KeyboardAvoidingView
-                    behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-                    style={styles.keyboardView}
-                >
-                    <Animated.View style={[styles.modalContainer, contentStyle, { paddingBottom: insets.bottom + 20 }]}>
+                <View style={styles.keyboardView}>
+                    <Animated.View style={[styles.modalContainer, contentStyle, { paddingBottom: insets.bottom + 20, backgroundColor: colors.card }]}>
                         {/* ─── Mesh Gradient Background (SVG Simulation) ─── */}
                         <View style={styles.meshContainer}>
-                            <View style={[styles.meshBlob, { backgroundColor: '#F9731615', top: -50, right: -50, width: 250, height: 250 }]} />
+                            <View style={[styles.meshBlob, { backgroundColor: colors.primary + '15', top: -50, right: -50, width: 250, height: 250 }]} />
                             <View style={[styles.meshBlob, { backgroundColor: '#8B5CF610', bottom: -100, left: -50, width: 300, height: 300 }]} />
                         </View>
 
                         {/* ─── Header ─── */}
                         <View style={[styles.header, { paddingTop: 20 }]}>
-                            <TouchableOpacity onPress={onClose} style={styles.iconBtn}>
-                                <X size={20} color="#64748B" />
+                            <TouchableOpacity onPress={onClose} style={[styles.iconBtn, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                                <X size={20} color={colors.textSecondary} />
                             </TouchableOpacity>
                             <View style={styles.headerTitleContainer}>
-                                <Sparkles size={16} color="#F97316" />
-                                <Text style={styles.headerTitle}>New Task</Text>
+                                <Sparkles size={16} color={colors.primary} />
+                                <Text style={[styles.headerTitle, { color: colors.text }]}>New Task</Text>
                             </View>
                             <TouchableOpacity
-                                style={[styles.createBtn, (!title.trim() || isSaving) && styles.createBtnDisabled]}
+                                style={[styles.createBtn, { backgroundColor: colors.primary, shadowColor: colors.primary }, (!title.trim() || isSaving) && { backgroundColor: colors.border, shadowOpacity: 0 }]}
                                 onPress={handleCreate}
                                 disabled={!title.trim() || isSaving}
                             >
@@ -312,55 +306,62 @@ export function CreateTaskModal({ visible, onClose, initialProjectId, initialDue
                             keyboardShouldPersistTaps="handled"
                         >
                             {/* ─── Title & Description Area ─── */}
-                            <Animated.View entering={FadeInDown.delay(100)} style={styles.inputBlock}>
+                            <Animated.View entering={FadeInDown.delay(100)} style={[styles.inputBlock, { backgroundColor: colors.surface + '80', borderColor: colors.border }]}>
                                 <BlurView intensity={20} tint="light" style={StyleSheet.absoluteFill} />
                                 <TextInput
                                     ref={titleInputRef}
-                                    style={styles.titleInput}
+                                    style={[styles.titleInput, { color: colors.text }]}
                                     placeholder="Task name..."
-                                    placeholderTextColor="#CBD5E1"
+                                    placeholderTextColor={colors.textTertiary}
                                     value={title}
                                     onChangeText={setTitle}
                                     multiline
                                 />
                                 <TextInput
-                                    style={styles.descInput}
+                                    style={[styles.descInput, { color: colors.textSecondary }]}
                                     placeholder="Add details or notes..."
-                                    placeholderTextColor="#94A3B8"
+                                    placeholderTextColor={colors.textTertiary}
                                     value={description}
-                                    onChangeText={setDescription}
+                                    onChangeText={(t) => setDescription(t.slice(0, 15000))}
                                     multiline
+                                    scrollEnabled
+                                    maxLength={15000}
                                 />
+                                {description.length > 0 && (
+                                    <Text style={[styles.charCount, { color: description.length > 14500 ? '#EF4444' : colors.textTertiary }]}>
+                                        {description.length.toLocaleString()}/15,000
+                                    </Text>
+                                )}
                             </Animated.View>
 
                             {/* ─── Project & Status Row ─── */}
                             <Animated.View entering={FadeInDown.delay(200)} style={styles.chipRow}>
                                 <TouchableOpacity
-                                    style={[styles.glassChip, { borderColor: (currentProject?.color || '#3B82F6') + '20' }]}
+                                    style={[styles.glassChip, { backgroundColor: colors.surface, borderColor: (currentProject?.color || '#3B82F6') + '20' }]}
                                     onPress={() => { triggerHaptic(); setShowProjectPicker(true); }}
                                 >
                                     <View style={[styles.dot, { backgroundColor: currentProject?.color || '#3B82F6' }]} />
-                                    <Text style={styles.chipText} numberOfLines={1}>
+                                    <Text style={[styles.chipText, { color: colors.text }]} numberOfLines={1}>
                                         {currentProject?.name || 'Project'}
                                     </Text>
-                                    <ChevronDown size={14} color="#94A3B8" />
+                                    <ChevronDown size={14} color={colors.textTertiary} />
                                 </TouchableOpacity>
 
                                 <TouchableOpacity
-                                    style={[styles.glassChip, { borderColor: (currentStatus?.color || '#94A3B8') + '20' }]}
+                                    style={[styles.glassChip, { backgroundColor: colors.surface, borderColor: (currentStatus?.color || '#94A3B8') + '20' }]}
                                     onPress={() => { triggerHaptic(); setShowStatusPicker(true); }}
                                 >
                                     <View style={[styles.dot, { backgroundColor: currentStatus?.color || '#94A3B8' }]} />
-                                    <Text style={[styles.chipText, { color: currentStatus?.color || '#64748B' }]} numberOfLines={1}>
+                                    <Text style={[styles.chipText, { color: currentStatus?.color || colors.textSecondary }]} numberOfLines={1}>
                                         {currentStatus?.name || 'Status'}
                                     </Text>
-                                    <ChevronDown size={14} color="#94A3B8" />
+                                    <ChevronDown size={14} color={colors.textTertiary} />
                                 </TouchableOpacity>
                             </Animated.View>
 
                             {/* ─── Priority Selection ─── */}
                             <Animated.View entering={FadeInDown.delay(300)} style={styles.section}>
-                                <Text style={styles.sectionLabel}>Priority</Text>
+                                <Text style={[styles.sectionLabel, { color: colors.textTertiary }]}>Priority</Text>
                                 <View style={styles.priorityGrid}>
                                     {PRIORITIES.map((p) => {
                                         const isSelected = priority === p.value;
@@ -369,12 +370,13 @@ export function CreateTaskModal({ visible, onClose, initialProjectId, initialDue
                                                 key={p.value}
                                                 style={[
                                                     styles.priorityCard,
+                                                    { backgroundColor: colors.surface },
                                                     isSelected && { borderColor: p.color, backgroundColor: p.bg + '60' }
                                                 ]}
                                                 onPress={() => { triggerHaptic(); setPriority(p.value); }}
                                             >
                                                 <Text style={styles.priorityEmoji}>{p.emoji}</Text>
-                                                <Text style={[styles.priorityLabel, isSelected && { color: p.color, fontWeight: '700' }]}>
+                                                <Text style={[styles.priorityLabel, { color: colors.textSecondary }, isSelected && { color: p.color, fontWeight: '700' }]}>
                                                     {p.label}
                                                 </Text>
                                                 {isSelected && (
@@ -389,34 +391,41 @@ export function CreateTaskModal({ visible, onClose, initialProjectId, initialDue
                             {/* ─── Assignee Selection ─── */}
                             <Animated.View entering={FadeInDown.delay(400)} style={styles.section}>
                                 <View style={styles.sectionHeader}>
-                                    <Text style={styles.sectionLabel}>Assign to</Text>
+                                    <Text style={[styles.sectionLabel, { color: colors.textTertiary }]}>Assign to</Text>
                                     <TouchableOpacity onPress={() => { triggerHaptic(); setShowAssigneePicker(true); }}>
-                                        <Text style={styles.viewAll}>View All</Text>
+                                        <Text style={[styles.viewAll, { color: colors.primary }]}>View All</Text>
                                     </TouchableOpacity>
                                 </View>
                                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.avatarScroll}>
                                     <TouchableOpacity
-                                        style={[styles.avatarContainer, !assigneeId && styles.avatarSelected]}
-                                        onPress={() => { triggerHaptic(); setAssigneeId(null); }}
+                                        style={[styles.avatarContainer, assigneeIds.length === 0 && styles.avatarSelected]}
+                                        onPress={() => { triggerHaptic(); setAssigneeIds([]); }}
                                     >
-                                        <View style={styles.avatarEmpty}>
-                                            <User size={20} color="#94A3B8" />
+                                        <View style={[styles.avatarEmpty, { backgroundColor: colors.surface }]}>
+                                            <User size={20} color={colors.textTertiary} />
                                         </View>
-                                        <Text style={styles.avatarName}>Nobody</Text>
+                                        <Text style={[styles.avatarName, { color: colors.textSecondary }]}>Nobody</Text>
                                     </TouchableOpacity>
                                     {members.slice(0, 8).map((m) => {
-                                        const isSelected = assigneeId === m.id;
+                                        const isSelected = assigneeIds.includes(m.id);
                                         const initial = m.full_name?.charAt(0) || m.email?.charAt(0) || '?';
                                         return (
                                             <TouchableOpacity
                                                 key={m.id}
                                                 style={[styles.avatarContainer, isSelected && styles.avatarSelected]}
-                                                onPress={() => { triggerHaptic(); setAssigneeId(m.id); }}
+                                                onPress={() => {
+                                                    triggerHaptic();
+                                                    setAssigneeIds(prev =>
+                                                        prev.includes(m.id)
+                                                            ? prev.filter(id => id !== m.id)
+                                                            : [...prev, m.id]
+                                                    );
+                                                }}
                                             >
-                                                <View style={[styles.avatarCircle, { backgroundColor: isSelected ? '#F9731620' : '#F8FAFC' }]}>
-                                                    <Text style={[styles.avatarInitial, isSelected && { color: '#F97316' }]}>{initial}</Text>
+                                                <View style={[styles.avatarCircle, { backgroundColor: isSelected ? colors.primary + '20' : colors.surface }]}>
+                                                    <Text style={[styles.avatarInitial, { color: colors.primary }, isSelected && { color: colors.primary }]}>{initial}</Text>
                                                 </View>
-                                                <Text style={[styles.avatarName, isSelected && { color: '#F97316', fontWeight: '600' }]} numberOfLines={1}>
+                                                <Text style={[styles.avatarName, { color: colors.textSecondary }, isSelected && { color: colors.primary, fontWeight: '600' }]} numberOfLines={1}>
                                                     {m.full_name?.split(' ')[0] || m.email?.split('@')[0]}
                                                 </Text>
                                             </TouchableOpacity>
@@ -427,9 +436,9 @@ export function CreateTaskModal({ visible, onClose, initialProjectId, initialDue
 
                             {/* ─── Due Date Selection (Inline Calendar + Shortcuts) ─── */}
                             <Animated.View entering={FadeInDown.delay(500)} style={styles.section}>
-                                <Text style={styles.sectionLabel}>Due Date</Text>
+                                <Text style={[styles.sectionLabel, { color: colors.textTertiary }]}>Due Date</Text>
 
-                                <View style={styles.dateSelectorContainer}>
+                                <View style={[styles.dateSelectorContainer, { backgroundColor: colors.surface, borderColor: colors.border }]}>
                                     <View style={styles.dateShortcuts}>
                                         {QUICK_DATES.map((d) => {
                                             const dateStr = d.id === 'today' ? format(new Date(), 'yyyy-MM-dd') :
@@ -439,20 +448,20 @@ export function CreateTaskModal({ visible, onClose, initialProjectId, initialDue
                                             return (
                                                 <TouchableOpacity
                                                     key={d.id}
-                                                    style={[styles.dateChip, isSelected && { borderColor: '#F97316', backgroundColor: '#FFF7ED' }]}
+                                                    style={[styles.dateChip, { backgroundColor: colors.card, borderColor: colors.border }, isSelected && { borderColor: colors.primary, backgroundColor: colors.primary + '15' }]}
                                                     onPress={() => { triggerHaptic(); setDueDateInput(isSelected ? '' : dateStr); }}
                                                 >
-                                                    <d.icon size={16} color={isSelected ? '#F97316' : d.color} />
-                                                    <Text style={[styles.dateLabel, isSelected && { color: '#F97316', fontWeight: '700' }]}>{d.label}</Text>
+                                                    <d.icon size={16} color={isSelected ? colors.primary : d.color} />
+                                                    <Text style={[styles.dateLabel, { color: colors.textSecondary }, isSelected && { color: colors.primary, fontWeight: '700' }]}>{d.label}</Text>
                                                 </TouchableOpacity>
                                             );
                                         })}
                                         <TouchableOpacity
-                                            style={[styles.dateChip, styles.pickDateBtn, !!dueDateInput && !QUICK_DATES.some(q => q.id === dueDateInput) && styles.dateChipSelected]}
+                                            style={[styles.dateChip, styles.pickDateBtn, { borderColor: colors.border }, !!dueDateInput && !QUICK_DATES.some(q => q.id === dueDateInput) && styles.dateChipSelected]}
                                             onPress={() => { triggerHaptic(); setShowDatePicker(true); }}
                                         >
-                                            <CalendarIcon size={16} color="#64748B" />
-                                            <Text style={styles.dateLabel}>
+                                            <CalendarIcon size={16} color={colors.textSecondary} />
+                                            <Text style={[styles.dateLabel, { color: colors.textSecondary }]}>
                                                 {dueDateInput ? format(parseISO(dueDateInput), 'MMM d') : 'Custom'}
                                             </Text>
                                         </TouchableOpacity>
@@ -471,7 +480,7 @@ export function CreateTaskModal({ visible, onClose, initialProjectId, initialDue
                             </Animated.View>
                         </ScrollView>
                     </Animated.View>
-                </KeyboardAvoidingView>
+                </View>
             </Animated.View>
 
             {/* ─── Premium Sub-Pickers ─── */}
@@ -495,8 +504,17 @@ export function CreateTaskModal({ visible, onClose, initialProjectId, initialDue
             <AssigneePicker
                 visible={showAssigneePicker}
                 members={members}
-                selectedId={assigneeId}
-                onSelect={(id: string | null) => { triggerHaptic(); setAssigneeId(id); setShowAssigneePicker(false); }}
+                selectedIds={assigneeIds}
+                onToggle={(id: string | null) => {
+                    triggerHaptic();
+                    if (id === null) {
+                        setAssigneeIds([]);
+                    } else {
+                        setAssigneeIds(prev =>
+                            prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+                        );
+                    }
+                }}
                 onClose={() => setShowAssigneePicker(false)}
             />
 
@@ -518,6 +536,7 @@ export function CreateTaskModal({ visible, onClose, initialProjectId, initialDue
 
 const ProjectPicker = ({ visible, projects, selectedId, onSelect, onClose }: any) => {
     const [search, setSearch] = useState('');
+    const { colors } = useTheme();
     const filtered = projects.filter((p: any) => p.name.toLowerCase().includes(search.toLowerCase()));
 
     if (!visible) return null;
@@ -525,20 +544,21 @@ const ProjectPicker = ({ visible, projects, selectedId, onSelect, onClose }: any
         <Modal visible={visible} transparent animationType="slide">
             <View style={pickerStyles.overlay}>
                 <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
-                <View style={[pickerStyles.container, { height: '60%' }]}>
-                    <View style={pickerStyles.handle} />
+                <View style={[pickerStyles.container, { height: '60%', backgroundColor: colors.card }]}>
+                    <View style={[pickerStyles.handle, { backgroundColor: colors.border }]} />
                     <View style={pickerStyles.header}>
-                        <Text style={pickerStyles.title}>Select Project</Text>
-                        <TouchableOpacity onPress={onClose} style={pickerStyles.closeBtn}>
-                            <X size={20} color="#64748B" />
+                        <Text style={[pickerStyles.title, { color: colors.text }]}>Select Project</Text>
+                        <TouchableOpacity onPress={onClose} style={[pickerStyles.closeBtn, { backgroundColor: colors.surface }]}>
+                            <X size={20} color={colors.textSecondary} />
                         </TouchableOpacity>
                     </View>
 
-                    <View style={pickerStyles.searchBar}>
-                        <Search size={16} color="#94A3B8" />
+                    <View style={[pickerStyles.searchBar, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                        <Search size={16} color={colors.textTertiary} />
                         <TextInput
-                            style={pickerStyles.searchInput}
+                            style={[pickerStyles.searchInput, { color: colors.text }]}
                             placeholder="Search projects..."
+                            placeholderTextColor={colors.textTertiary}
                             value={search}
                             onChangeText={setSearch}
                         />
@@ -548,12 +568,12 @@ const ProjectPicker = ({ visible, projects, selectedId, onSelect, onClose }: any
                         {filtered.map((p: any) => (
                             <TouchableOpacity
                                 key={p.id}
-                                style={[pickerStyles.item, selectedId === p.id && pickerStyles.itemSelected]}
+                                style={[pickerStyles.item, selectedId === p.id && { backgroundColor: colors.primary + '10' }]}
                                 onPress={() => onSelect(p.id)}
                             >
                                 <View style={[pickerStyles.colorDot, { backgroundColor: p.color || '#3B82F6' }]} />
-                                <Text style={[pickerStyles.itemText, selectedId === p.id && pickerStyles.itemTextSelected]}>{p.name}</Text>
-                                {selectedId === p.id && <CheckCircle2 size={18} color="#F97316" />}
+                                <Text style={[pickerStyles.itemText, { color: colors.text }, selectedId === p.id && { color: colors.primary }]}>{p.name}</Text>
+                                {selectedId === p.id && <CheckCircle2 size={18} color={colors.primary} />}
                             </TouchableOpacity>
                         ))}
                     </ScrollView>
@@ -564,17 +584,18 @@ const ProjectPicker = ({ visible, projects, selectedId, onSelect, onClose }: any
 };
 
 const StatusPicker = ({ visible, statuses, selectedId, onSelect, onClose }: any) => {
+    const { colors } = useTheme();
     if (!visible) return null;
     return (
         <Modal visible={visible} transparent animationType="slide">
             <View style={pickerStyles.overlay}>
                 <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
-                <View style={[pickerStyles.container, { height: '50%' }]}>
-                    <View style={pickerStyles.handle} />
+                <View style={[pickerStyles.container, { height: '50%', backgroundColor: colors.card }]}>
+                    <View style={[pickerStyles.handle, { backgroundColor: colors.border }]} />
                     <View style={pickerStyles.header}>
-                        <Text style={pickerStyles.title}>Update Status</Text>
-                        <TouchableOpacity onPress={onClose} style={pickerStyles.closeBtn}>
-                            <X size={20} color="#64748B" />
+                        <Text style={[pickerStyles.title, { color: colors.text }]}>Update Status</Text>
+                        <TouchableOpacity onPress={onClose} style={[pickerStyles.closeBtn, { backgroundColor: colors.surface }]}>
+                            <X size={20} color={colors.textSecondary} />
                         </TouchableOpacity>
                     </View>
 
@@ -582,12 +603,12 @@ const StatusPicker = ({ visible, statuses, selectedId, onSelect, onClose }: any)
                         {statuses.map((s: any) => (
                             <TouchableOpacity
                                 key={s.id}
-                                style={[pickerStyles.item, selectedId === s.id && pickerStyles.itemSelected]}
+                                style={[pickerStyles.item, selectedId === s.id && { backgroundColor: colors.primary + '10' }]}
                                 onPress={() => onSelect(s.id, s.name)}
                             >
                                 <View style={[pickerStyles.colorDot, { backgroundColor: s.color || '#94A3B8' }]} />
-                                <Text style={[pickerStyles.itemText, selectedId === s.id && pickerStyles.itemTextSelected]}>{s.name}</Text>
-                                {selectedId === s.id && <CheckCircle2 size={18} color="#F97316" />}
+                                <Text style={[pickerStyles.itemText, { color: colors.text }, selectedId === s.id && { color: colors.primary }]}>{s.name}</Text>
+                                {selectedId === s.id && <CheckCircle2 size={18} color={colors.primary} />}
                             </TouchableOpacity>
                         ))}
                     </ScrollView>
@@ -597,8 +618,9 @@ const StatusPicker = ({ visible, statuses, selectedId, onSelect, onClose }: any)
     );
 };
 
-const AssigneePicker = ({ visible, members, selectedId, onSelect, onClose }: any) => {
+const AssigneePicker = ({ visible, members, selectedIds, onToggle, onClose }: any) => {
     const [search, setSearch] = useState('');
+    const { colors } = useTheme();
     const filtered = members.filter((m: any) =>
         (m.full_name || '').toLowerCase().includes(search.toLowerCase()) ||
         (m.email || '').toLowerCase().includes(search.toLowerCase())
@@ -609,20 +631,23 @@ const AssigneePicker = ({ visible, members, selectedId, onSelect, onClose }: any
         <Modal visible={visible} transparent animationType="slide">
             <View style={pickerStyles.overlay}>
                 <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
-                <View style={[pickerStyles.container, { height: '70%' }]}>
-                    <View style={pickerStyles.handle} />
+                <View style={[pickerStyles.container, { height: '70%', backgroundColor: colors.card }]}>
+                    <View style={[pickerStyles.handle, { backgroundColor: colors.border }]} />
                     <View style={pickerStyles.header}>
-                        <Text style={pickerStyles.title}>Assign Task</Text>
-                        <TouchableOpacity onPress={onClose} style={pickerStyles.closeBtn}>
-                            <X size={20} color="#64748B" />
+                        <Text style={[pickerStyles.title, { color: colors.text }]}>
+                            Assign Task{selectedIds?.length > 0 ? ` (${selectedIds.length})` : ''}
+                        </Text>
+                        <TouchableOpacity onPress={onClose} style={[pickerStyles.closeBtn, { backgroundColor: colors.surface }]}>
+                            <X size={20} color={colors.textSecondary} />
                         </TouchableOpacity>
                     </View>
 
-                    <View style={pickerStyles.searchBar}>
-                        <Search size={16} color="#94A3B8" />
+                    <View style={[pickerStyles.searchBar, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                        <Search size={16} color={colors.textTertiary} />
                         <TextInput
-                            style={pickerStyles.searchInput}
+                            style={[pickerStyles.searchInput, { color: colors.text }]}
                             placeholder="Find a teammate..."
+                            placeholderTextColor={colors.textTertiary}
                             value={search}
                             onChangeText={setSearch}
                         />
@@ -630,34 +655,37 @@ const AssigneePicker = ({ visible, members, selectedId, onSelect, onClose }: any
 
                     <ScrollView contentContainerStyle={pickerStyles.scroll}>
                         <TouchableOpacity
-                            style={[pickerStyles.item, !selectedId && pickerStyles.itemSelected]}
-                            onPress={() => onSelect(null)}
+                            style={[pickerStyles.item, (!selectedIds || selectedIds.length === 0) && { backgroundColor: colors.primary + '10' }]}
+                            onPress={() => onToggle(null)}
                         >
-                            <View style={[pickerStyles.avatarPlaceholder, { backgroundColor: '#F1F5F9' }]}>
-                                <User size={18} color="#94A3B8" />
+                            <View style={[pickerStyles.avatarPlaceholder, { backgroundColor: colors.surface }]}>
+                                <User size={18} color={colors.textTertiary} />
                             </View>
-                            <Text style={[pickerStyles.itemText, !selectedId && pickerStyles.itemTextSelected]}>Unassigned</Text>
-                            {!selectedId && <CheckCircle2 size={18} color="#F97316" />}
+                            <Text style={[pickerStyles.itemText, { color: colors.text }, (!selectedIds || selectedIds.length === 0) && { color: colors.primary }]}>Unassigned</Text>
+                            {(!selectedIds || selectedIds.length === 0) && <CheckCircle2 size={18} color={colors.primary} />}
                         </TouchableOpacity>
 
-                        {filtered.map((m: any) => (
-                            <TouchableOpacity
-                                key={m.id}
-                                style={[pickerStyles.item, selectedId === m.id && pickerStyles.itemSelected]}
-                                onPress={() => onSelect(m.id)}
-                            >
-                                <View style={[pickerStyles.avatarPlaceholder, { backgroundColor: '#F9731615' }]}>
-                                    <Text style={pickerStyles.avatarInitial}>{m.full_name?.charAt(0) || '?'}</Text>
-                                </View>
-                                <View style={{ flex: 1 }}>
-                                    <Text style={[pickerStyles.itemText, selectedId === m.id && pickerStyles.itemTextSelected]}>
-                                        {m.full_name || 'Anonymous'}
-                                    </Text>
-                                    <Text style={pickerStyles.itemSubText}>{m.email}</Text>
-                                </View>
-                                {selectedId === m.id && <CheckCircle2 size={18} color="#F97316" />}
-                            </TouchableOpacity>
-                        ))}
+                        {filtered.map((m: any) => {
+                            const isSelected = selectedIds?.includes(m.id);
+                            return (
+                                <TouchableOpacity
+                                    key={m.id}
+                                    style={[pickerStyles.item, isSelected && { backgroundColor: colors.primary + '10' }]}
+                                    onPress={() => onToggle(m.id)}
+                                >
+                                    <View style={[pickerStyles.avatarPlaceholder, { backgroundColor: isSelected ? colors.primary + '15' : colors.surface }]}>
+                                        <Text style={[pickerStyles.avatarInitial, { color: colors.primary }]}>{m.full_name?.charAt(0) || '?'}</Text>
+                                    </View>
+                                    <View style={{ flex: 1 }}>
+                                        <Text style={[pickerStyles.itemText, { color: colors.text }, isSelected && { color: colors.primary }]}>
+                                            {m.full_name || 'Anonymous'}
+                                        </Text>
+                                        <Text style={[pickerStyles.itemSubText, { color: colors.textTertiary }]}>{m.email}</Text>
+                                    </View>
+                                    {isSelected && <CheckCircle2 size={18} color={colors.primary} />}
+                                </TouchableOpacity>
+                            );
+                        })}
                     </ScrollView>
                 </View>
             </View>
@@ -667,6 +695,7 @@ const AssigneePicker = ({ visible, members, selectedId, onSelect, onClose }: any
 
 const DueDatePicker = ({ visible, onClose, selectedValue, onSelect }: any) => {
     const [tempDate, setTempDate] = useState(selectedValue || format(new Date(), 'yyyy-MM-dd'));
+    const { colors } = useTheme();
 
     useEffect(() => {
         if (visible && selectedValue) {
@@ -680,33 +709,33 @@ const DueDatePicker = ({ visible, onClose, selectedValue, onSelect }: any) => {
         <Modal visible={visible} transparent animationType="slide">
             <View style={pickerStyles.overlay}>
                 <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
-                <View style={[pickerStyles.container, { height: 'auto', paddingBottom: 30 }]}>
-                    <View style={pickerStyles.handle} />
+                <View style={[pickerStyles.container, { height: 'auto', paddingBottom: 30, backgroundColor: colors.card }]}>
+                    <View style={[pickerStyles.handle, { backgroundColor: colors.border }]} />
                     <View style={pickerStyles.header}>
-                        <Text style={pickerStyles.title}>Select Due Date</Text>
-                        <TouchableOpacity onPress={onClose} style={pickerStyles.closeBtn}>
-                            <X size={20} color="#64748B" />
+                        <Text style={[pickerStyles.title, { color: colors.text }]}>Select Due Date</Text>
+                        <TouchableOpacity onPress={onClose} style={[pickerStyles.closeBtn, { backgroundColor: colors.surface }]}>
+                            <X size={20} color={colors.textSecondary} />
                         </TouchableOpacity>
                     </View>
 
                     <View style={dpStyles.shortcuts}>
-                        <TouchableOpacity style={dpStyles.shortcut} onPress={() => onSelect(format(new Date(), 'yyyy-MM-dd'))}>
+                        <TouchableOpacity style={[dpStyles.shortcut, { backgroundColor: colors.surface, borderColor: colors.border }]} onPress={() => onSelect(format(new Date(), 'yyyy-MM-dd'))}>
                             <View style={[dpStyles.shortcutIcon, { backgroundColor: '#FFF7ED' }]}>
                                 <Sun size={16} color="#F97316" />
                             </View>
-                            <Text style={dpStyles.shortcutText}>Today</Text>
+                            <Text style={[dpStyles.shortcutText, { color: colors.textSecondary }]}>Today</Text>
                         </TouchableOpacity>
-                        <TouchableOpacity style={dpStyles.shortcut} onPress={() => onSelect(format(addDays(new Date(), 1), 'yyyy-MM-dd'))}>
+                        <TouchableOpacity style={[dpStyles.shortcut, { backgroundColor: colors.surface, borderColor: colors.border }]} onPress={() => onSelect(format(addDays(new Date(), 1), 'yyyy-MM-dd'))}>
                             <View style={[dpStyles.shortcutIcon, { backgroundColor: '#EFF6FF' }]}>
                                 <Sunrise size={16} color="#3B82F6" />
                             </View>
-                            <Text style={dpStyles.shortcutText}>Tomorrow</Text>
+                            <Text style={[dpStyles.shortcutText, { color: colors.textSecondary }]}>Tomorrow</Text>
                         </TouchableOpacity>
-                        <TouchableOpacity style={dpStyles.shortcut} onPress={() => onSelect(format(nextMonday(new Date()), 'yyyy-MM-dd'))}>
+                        <TouchableOpacity style={[dpStyles.shortcut, { backgroundColor: colors.surface, borderColor: colors.border }]} onPress={() => onSelect(format(nextMonday(new Date()), 'yyyy-MM-dd'))}>
                             <View style={[dpStyles.shortcutIcon, { backgroundColor: '#F5F3FF' }]}>
                                 <CalendarDays size={16} color="#8B5CF6" />
                             </View>
-                            <Text style={dpStyles.shortcutText}>Next Mon</Text>
+                            <Text style={[dpStyles.shortcutText, { color: colors.textSecondary }]}>Next Mon</Text>
                         </TouchableOpacity>
                     </View>
 
@@ -717,22 +746,22 @@ const DueDatePicker = ({ visible, onClose, selectedValue, onSelect }: any) => {
                                 onSelect(day.dateString);
                             }}
                             markedDates={{
-                                [tempDate]: { selected: true, selectedColor: '#F97316' },
+                                [tempDate]: { selected: true, selectedColor: colors.primary },
                             }}
                             theme={{
-                                backgroundColor: '#ffffff',
-                                calendarBackground: '#ffffff',
-                                textSectionTitleColor: '#94A3B8',
-                                selectedDayBackgroundColor: '#F97316',
+                                backgroundColor: colors.card,
+                                calendarBackground: colors.card,
+                                textSectionTitleColor: colors.textTertiary,
+                                selectedDayBackgroundColor: colors.primary,
                                 selectedDayTextColor: '#ffffff',
-                                todayTextColor: '#F97316',
-                                dayTextColor: '#0F172A', // Using very dark blue/black for visibility
-                                textDisabledColor: '#E2E8F0',
-                                dotColor: '#F97316',
+                                todayTextColor: colors.primary,
+                                dayTextColor: colors.text,
+                                textDisabledColor: colors.textTertiary,
+                                dotColor: colors.primary,
                                 selectedDotColor: '#ffffff',
-                                arrowColor: '#F97316',
-                                monthTextColor: '#0F172A',
-                                indicatorColor: '#F97316',
+                                arrowColor: colors.primary,
+                                monthTextColor: colors.text,
+                                indicatorColor: colors.primary,
                                 textDayFontWeight: '600',
                                 textMonthFontWeight: 'bold',
                                 textDayHeaderFontWeight: '700',
@@ -880,7 +909,14 @@ const styles = StyleSheet.create({
         color: '#64748B',
         padding: 0,
         minHeight: 44,
+        maxHeight: 160,
         lineHeight: 24,
+    },
+    charCount: {
+        fontSize: 11,
+        fontWeight: '500',
+        textAlign: 'right',
+        marginTop: 4,
     },
     chipRow: {
         flexDirection: 'row',

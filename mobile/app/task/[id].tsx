@@ -13,6 +13,7 @@ import {
   KeyboardAvoidingView,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { TaskDetailSkeleton } from '@/components/ui/Skeleton';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import {
@@ -23,6 +24,7 @@ import {
   Clock,
   Play,
   Pause,
+  Square,
   CheckCircle2,
   MoreVertical,
   Trash2,
@@ -41,6 +43,7 @@ import {
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
 import { useWorkspace } from '@/hooks/useWorkspace';
+import { useTheme } from '@/contexts/ThemeContext';
 import { useTaskTimer } from '@/hooks/useTaskTimer';
 import { format, addDays, nextMonday, startOfDay } from 'date-fns';
 import { TaskDetailsTab } from '@/components/task/TaskDetailsTab';
@@ -79,6 +82,7 @@ export default function TaskDetailScreen() {
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const { currentWorkspace } = useWorkspace();
+  const { colors } = useTheme();
 
   const [task, setTask] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -134,16 +138,16 @@ export default function TaskDetailScreen() {
   }, [assignees, task, members]);
 
   // Timer
-  const completedStatus = useMemo(() => statuses.find(s => s.is_completed), [statuses]);
+  const completedStatus = useMemo(() => statuses.find(s => s.category === 'done' || s.is_completed), [statuses]);
   const {
-    isRunning, displayTime, formatTime, formatTimeLive, formatTimeWithSeconds,
-    startTimer, pauseTimer, resumeTimer, completeTask, deleteSession,
+    phase: timerPhase, isRunning, displayTime, formatTime, formatTimeLive, formatTimeWithSeconds,
+    startTimer, pauseTimer, resumeTimer, stopTimer, completeTask, deleteSession,
     sessions, firstStartedAt, completedAt, totalWorkTime,
     isLoading: timerLoading, elapsedTime, refresh: timerRefresh,
   } = useTaskTimer(id || '', completedStatus?.id);
 
   const currentStatus = useMemo(() => statuses.find(s => s.id === task?.custom_status_id), [statuses, task?.custom_status_id]);
-  const isCompleted = currentStatus?.is_completed || false;
+  const isCompleted = currentStatus?.category === 'done' || currentStatus?.category === 'cancelled' || currentStatus?.is_completed || false;
 
   // Pause dialog state
   const [showPauseDialog, setShowPauseDialog] = useState(false);
@@ -171,6 +175,9 @@ export default function TaskDetailScreen() {
         Alert.alert('Not Found', 'This task no longer exists.');
         router.back();
         return;
+      }
+      if (!data.priority) {
+        data.priority = 'low';
       }
       setTask(data);
       return data;
@@ -201,32 +208,22 @@ export default function TaskDetailScreen() {
     }, 800);
   };
 
-  const mapToEnum = (s: any): string => {
-    if (!s) return 'todo';
-    if (s.is_completed) return 'done';
-    const n = s.name?.toLowerCase() || '';
-    if (n.includes('progress') || n.includes('doing') || n.includes('active')) return 'in_progress';
-    if (n.includes('review') || n.includes('testing') || n.includes('qa')) return 'review';
-    if (n.includes('done') || n.includes('complete') || n.includes('closed')) return 'done';
-    return 'todo';
-  };
-
   const handleStatusChange = async (statusId: string) => {
     const st = statuses.find(s => s.id === statusId);
     if (!st) return;
 
     // If marking as completed, also stop timer
-    if (st.is_completed && isRunning) {
+    const isDone = st.category === 'done' || st.category === 'cancelled' || st.is_completed;
+    if (isDone && isRunning) {
       await pauseTimer();
     }
 
-    syncField('custom_status_id', statusId, {
-      status: mapToEnum(st),
-      completed_at: st.is_completed ? new Date().toISOString() : null,
-    });
+    // Only write custom_status_id — DB trigger handles status, completed_at, first_started_at
+    syncField('custom_status_id', statusId);
   };
 
   const handlePriorityChange = (val: string) => {
+    setTask((prev: any) => prev ? { ...prev, priority: val } : prev);
     syncField('priority', val);
   };
 
@@ -257,10 +254,9 @@ export default function TaskDetailScreen() {
     const st = statuses.find(s => s.id === statusId);
     if (!st) return;
     try {
+      // Only write custom_status_id — DB trigger handles status, completed_at, first_started_at
       await supabase.from('tasks').update({
         custom_status_id: statusId,
-        status: mapToEnum(st),
-        ...(st.is_completed ? { completed_at: new Date().toISOString() } : {}),
       }).eq('id', id);
       console.log('[Timer] ✓ Status updated after pause:', st.name);
       fetchTask();
@@ -425,20 +421,31 @@ export default function TaskDetailScreen() {
     ]);
   };
 
-  const handleTransferProject = (projectId: string) => {
+  const handleTransferProject = async (projectId: string) => {
     const proj = projects.find(p => p.id === projectId);
     console.log(`[Activity] Transferring task to project: ${proj?.name || projectId}`);
-    supabase.from('tasks').update({ project_id: projectId }).eq('id', id)
-      .then(({ error }) => {
-        if (error) {
-          console.error('[Activity] ✗ Transfer failed:', error);
-          Alert.alert('Error', 'Failed to transfer task');
-        } else {
-          console.log('[Activity] ✓ Task transferred to:', proj?.name);
-          fetchTask();
-        }
-      });
     setShowTransferPicker(false);
+    try {
+      // Get the new project's default status to remap custom_status_id
+      const { data: newStatuses } = await supabase
+        .from('project_statuses')
+        .select('id, is_default, category')
+        .eq('project_id', projectId)
+        .order('position');
+      const defaultStatus = newStatuses?.find(s => s.category === 'todo' || s.is_default) || newStatuses?.[0];
+
+      const updateData: any = { project_id: projectId };
+      if (defaultStatus) updateData.custom_status_id = defaultStatus.id;
+
+      const { error } = await supabase.from('tasks').update(updateData).eq('id', id);
+      if (error) throw error;
+      console.log('[Activity] ✓ Task transferred to:', proj?.name);
+      const taskData = await fetchTask();
+      if (taskData?.project_id) await fetchStatuses(taskData.project_id);
+    } catch (error: any) {
+      console.error('[Activity] ✗ Transfer failed:', error);
+      Alert.alert('Error', 'Failed to transfer task');
+    }
   };
 
   // ─── Tabs ───
@@ -451,86 +458,177 @@ export default function TaskDetailScreen() {
 
   if (isLoading) {
     return (
-      <View style={[styles.loadingContainer, { paddingTop: insets.top }]}>
-        <ActivityIndicator size="large" color="#F97316" />
+      <View style={[styles.loadingContainer, { paddingTop: insets.top, backgroundColor: colors.background }]}>
+        <TaskDetailSkeleton />
       </View>
     );
   }
 
   if (!task) {
     return (
-      <View style={[styles.loadingContainer, { paddingTop: insets.top }]}>
-        <Text style={{ color: '#94A3B8', fontSize: 16 }}>Task not found</Text>
+      <View style={[styles.loadingContainer, { paddingTop: insets.top, backgroundColor: colors.background }]}>
+        <Text style={{ color: colors.textSecondary, fontSize: 16 }}>Task not found</Text>
       </View>
     );
   }
 
   const projectName = projects.find(p => p.id === task.project_id)?.name;
-  const projectColor = projects.find(p => p.id === task.project_id)?.color || '#F97316';
+  const projectColor = projects.find(p => p.id === task.project_id)?.color || colors.primary;
 
   return (
     <KeyboardAvoidingView
-      style={styles.container}
+      style={[styles.container, { backgroundColor: colors.background }]}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
     >
       <StatusBar style="dark" />
 
       {/* ─── Custom Header ─── */}
-      <View style={[styles.header, { paddingTop: insets.top + 4 }]}>
+      <View style={[
+        styles.header, 
+        { 
+          backgroundColor: colors.card,
+          borderBottomColor: colors.border,
+          shadowColor: colors.shadow,
+          shadowOffset: { width: 0, height: 2 },
+          shadowOpacity: 0.1,
+          shadowRadius: 8,
+          elevation: 3,
+          paddingTop: insets.top + 4 
+        }
+      ]}>
         <View style={styles.headerLeft}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.headerBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-            <ArrowLeft size={22} color="#1E293B" />
+          <TouchableOpacity 
+            onPress={() => router.back()} 
+            style={[
+              styles.headerBtn, 
+              { 
+                backgroundColor: colors.surface,
+                borderRadius: 12,
+                padding: 8,
+                shadowColor: colors.shadowLight,
+                shadowOffset: { width: 0, height: 1 },
+                shadowOpacity: 0.05,
+                shadowRadius: 2,
+                elevation: 1,
+              }
+            ]} 
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <ArrowLeft size={22} color={colors.text} />
           </TouchableOpacity>
-          <View style={styles.headerInfo}>
-            <Text style={styles.headerTitle} numberOfLines={1}>{task.title}</Text>
-            {projectName && (
-              <View style={styles.headerProject}>
-                <View style={[styles.headerDot, { backgroundColor: projectColor }]} />
-                <Text style={styles.headerProjectText} numberOfLines={1}>{projectName}</Text>
-              </View>
-            )}
+          <View style={styles.headerCenter}>
+            <View style={[
+              styles.headerDot, 
+              { 
+                backgroundColor: projectColor,
+                shadowColor: projectColor,
+                shadowOffset: { width: 0, height: 1 },
+                shadowOpacity: 0.2,
+                shadowRadius: 2,
+                elevation: 1,
+              }
+            ]} />
+            <Text style={[styles.headerTitle, { color: colors.text }]} numberOfLines={1}>{task.title}</Text>
+            <Text style={[styles.headerSubtitle, { color: colors.textSecondary }]}>{projectName}</Text>
           </View>
         </View>
-        <TouchableOpacity onPress={() => setShowOptionsMenu(true)} style={styles.headerBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-          <MoreVertical size={20} color="#64748B" />
-        </TouchableOpacity>
+        <View style={styles.headerRight}>
+          <TouchableOpacity 
+            style={[
+              styles.headerBtn, 
+              { 
+                backgroundColor: colors.surface,
+                borderRadius: 12,
+                padding: 8,
+                shadowColor: colors.shadowLight,
+                shadowOffset: { width: 0, height: 1 },
+                shadowOpacity: 0.05,
+                shadowRadius: 2,
+                elevation: 1,
+              }
+            ]} 
+            onPress={() => setShowOptionsMenu(true)}
+          >
+            <MoreVertical size={22} color={colors.text} />
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* ─── Timer Bar ─── */}
       {!timerLoading && (
-        <View style={styles.timerBar}>
+        <View style={[
+          styles.timerBar, 
+          { 
+            backgroundColor: colors.cardElevated,
+            borderBottomColor: colors.borderLight,
+            borderBottomWidth: 1,
+            shadowColor: colors.shadowLight,
+            shadowOffset: { width: 0, height: 1 },
+            shadowOpacity: 0.05,
+            shadowRadius: 4,
+            elevation: 1,
+          }
+        ]}>
           <View style={styles.timerLeft}>
-            <View style={[styles.timerIcon, isRunning && { backgroundColor: '#DCFCE7' }]}>
-              {isRunning ? <Clock size={18} color="#22C55E" /> : isCompleted ? <CheckCircle2 size={18} color="#22C55E" /> : <Clock size={18} color="#94A3B8" />}
+            <View style={[
+              styles.timerIcon, 
+              { 
+                backgroundColor: isRunning ? colors.successBg : colors.surface,
+                shadowColor: isRunning ? colors.success : colors.shadow,
+                shadowOffset: { width: 0, height: 1 },
+                shadowOpacity: 0.1,
+                shadowRadius: 2,
+                elevation: 1,
+              }
+            ]}>
+              {isRunning ? <Clock size={18} color={colors.success} /> : isCompleted ? <CheckCircle2 size={18} color={colors.success} /> : <Clock size={18} color={colors.textTertiary} />}
             </View>
             <View>
-              <Text style={styles.timerValue}>
+              <Text style={[
+                styles.timerValue, 
+                { 
+                  color: isRunning ? colors.primary : colors.text,
+                  fontSize: 18,
+                  fontWeight: '700',
+                  fontFamily: isRunning ? (Platform.OS === 'ios' ? 'Courier' : 'monospace') : undefined,
+                }
+              ]}>
                 {isRunning ? formatTimeLive(displayTime) : formatTime(displayTime)}
               </Text>
-              <Text style={styles.timerSub}>
-                {isRunning ? '● Running' : sessions.length > 0 ? `${sessions.length} session${sessions.length > 1 ? 's' : ''}` : 'No time tracked'}
+              <Text style={[
+                styles.timerSub, 
+                { 
+                  color: timerPhase === 'running' ? '#22C55E' : timerPhase === 'paused' ? '#F97316' : colors.textTertiary,
+                  fontSize: 12,
+                  fontWeight: '500'
+                }
+              ]}>
+                {timerPhase === 'running' ? '● Recording' : timerPhase === 'paused' ? '⏸ Paused' : timerPhase === 'completed' ? '✓ Completed' : sessions.length > 0 ? `${sessions.length} session${sessions.length > 1 ? 's' : ''}` : 'No time tracked'}
               </Text>
             </View>
           </View>
           <View style={styles.timerActions}>
-            {isCompleted ? (
+            {timerPhase === 'completed' ? (
               <View style={styles.completedBadge}>
                 <CheckCircle2 size={14} color="#22C55E" />
                 <Text style={styles.completedBadgeText}>Done</Text>
               </View>
-            ) : isRunning ? (
+            ) : timerPhase === 'running' ? (
               <>
                 <TouchableOpacity style={[styles.timerBtn, { backgroundColor: '#F97316' }]} onPress={handlePauseTimer}>
                   <Pause size={14} color="#FFF" />
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.timerBtn, { backgroundColor: '#EF4444' }]} onPress={async () => { await stopTimer(); }}>
+                  <Square size={12} color="#FFF" />
                 </TouchableOpacity>
                 <TouchableOpacity style={[styles.timerBtn, { backgroundColor: '#22C55E' }]} onPress={completeTask}>
                   <CheckCircle2 size={14} color="#FFF" />
                 </TouchableOpacity>
               </>
-            ) : firstStartedAt ? (
+            ) : timerPhase === 'paused' ? (
               <>
-                <TouchableOpacity style={[styles.timerBtn, { backgroundColor: '#F97316' }]} onPress={resumeTimer}>
+                <TouchableOpacity style={[styles.timerBtn, { backgroundColor: '#3B82F6' }]} onPress={resumeTimer}>
                   <Play size={14} color="#FFF" />
                 </TouchableOpacity>
                 <TouchableOpacity style={[styles.timerBtn, { backgroundColor: '#22C55E' }]} onPress={completeTask}>
@@ -538,7 +636,7 @@ export default function TaskDetailScreen() {
                 </TouchableOpacity>
               </>
             ) : (
-              <TouchableOpacity style={[styles.timerBtn, { backgroundColor: '#F97316' }]} onPress={startTimer}>
+              <TouchableOpacity style={[styles.timerBtn, { backgroundColor: '#3B82F6' }]} onPress={startTimer}>
                 <Play size={14} color="#FFF" />
                 <Text style={styles.timerBtnText}>Start</Text>
               </TouchableOpacity>
@@ -549,26 +647,26 @@ export default function TaskDetailScreen() {
 
       {/* ─── Mini Stats ─── */}
       {!timerLoading && (firstStartedAt || completedAt) && (
-        <View style={styles.miniStats}>
+        <View style={[styles.miniStats, { backgroundColor: colors.cardElevated, borderBottomColor: colors.borderLight }]}>
           {firstStartedAt && (
             <View style={styles.miniStatItem}>
               <View style={[styles.miniStatDot, { backgroundColor: '#F97316' }]} />
-              <Text style={styles.miniStatLabel}>Started</Text>
-              <Text style={styles.miniStatValue}>{format(firstStartedAt, 'MMM d')}</Text>
+              <Text style={[styles.miniStatLabel, { color: colors.textTertiary }]}>Started</Text>
+              <Text style={[styles.miniStatValue, { color: colors.textSecondary }]}>{format(firstStartedAt, 'MMM d')}</Text>
             </View>
           )}
           {completedAt && (
             <View style={styles.miniStatItem}>
               <View style={[styles.miniStatDot, { backgroundColor: '#22C55E' }]} />
-              <Text style={styles.miniStatLabel}>Completed</Text>
-              <Text style={styles.miniStatValue}>{format(completedAt, 'MMM d')}</Text>
+              <Text style={[styles.miniStatLabel, { color: colors.textTertiary }]}>Completed</Text>
+              <Text style={[styles.miniStatValue, { color: colors.textSecondary }]}>{format(completedAt, 'MMM d')}</Text>
             </View>
           )}
           {firstStartedAt && (
             <View style={styles.miniStatItem}>
               <View style={[styles.miniStatDot, { backgroundColor: '#8B5CF6' }]} />
-              <Text style={styles.miniStatLabel}>Elapsed</Text>
-              <Text style={styles.miniStatValue}>
+              <Text style={[styles.miniStatLabel, { color: colors.textTertiary }]}>Elapsed</Text>
+              <Text style={[styles.miniStatValue, { color: colors.textSecondary }]}>
                 {Math.max(1, Math.ceil(((completedAt || new Date()).getTime() - firstStartedAt.getTime()) / (1000 * 60 * 60 * 24)))}d
               </Text>
             </View>
@@ -577,11 +675,11 @@ export default function TaskDetailScreen() {
       )}
 
       {/* ─── Title and Bubbles (Visible on all tabs) ─── */}
-      <View style={styles.sharedHeaders}>
+      <View style={[styles.sharedHeaders, { backgroundColor: colors.card }]}>
         <TextInput
-          style={[styles.titleInput, isCompleted && { textDecorationLine: 'line-through', color: '#94A3B8' }]}
+          style={[styles.titleInput, { color: colors.text }, isCompleted && { textDecorationLine: 'line-through', color: colors.textTertiary }]}
           placeholder="Task title..."
-          placeholderTextColor="#CBD5E1"
+          placeholderTextColor={colors.textTertiary}
           value={title}
           onChangeText={handleTitleChange}
           multiline
@@ -590,24 +688,24 @@ export default function TaskDetailScreen() {
         <View style={{ height: 40, marginBottom: 8 }}>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.bubbleRow}>
             {/* Status */}
-            <TouchableOpacity style={[styles.bubble, { borderColor: (currentStatus?.color || '#94A3B8') + '40' }]} onPress={() => setShowStatusPicker(true)}>
-              <View style={[styles.bubbleDot, { backgroundColor: currentStatus?.color || '#94A3B8' }]} />
-              <Text style={styles.bubbleText} numberOfLines={1}>{currentStatus?.name || 'Status'}</Text>
-              <ChevronDown size={12} color="#94A3B8" />
+            <TouchableOpacity style={[styles.bubble, { backgroundColor: colors.surface, borderColor: (currentStatus?.color || colors.textTertiary) + '40' }]} onPress={() => setShowStatusPicker(true)}>
+              <View style={[styles.bubbleDot, { backgroundColor: currentStatus?.color || colors.textTertiary }]} />
+              <Text style={[styles.bubbleText, { color: colors.textSecondary }]} numberOfLines={1}>{currentStatus?.name || 'Status'}</Text>
+              <ChevronDown size={12} color={colors.textTertiary} />
             </TouchableOpacity>
 
             {/* Assignees */}
-            <TouchableOpacity style={[styles.bubble, effectiveAssignees.length > 0 && { borderColor: '#FED7AA', backgroundColor: '#FFF7ED' }]} onPress={() => assigneeRef.current?.openPicker()}>
-              <UserIcon size={12} color={effectiveAssignees.length > 0 ? '#F97316' : '#94A3B8'} />
-              <Text style={[styles.bubbleText, effectiveAssignees.length > 0 && { color: '#F97316' }]} numberOfLines={1}>
+            <TouchableOpacity style={[styles.bubble, { backgroundColor: colors.surface, borderColor: colors.border }, effectiveAssignees.length > 0 && { borderColor: colors.primary + '40', backgroundColor: colors.primary + '10' }]} onPress={() => assigneeRef.current?.openPicker()}>
+              <UserIcon size={12} color={effectiveAssignees.length > 0 ? colors.primary : colors.textTertiary} />
+              <Text style={[styles.bubbleText, { color: colors.textSecondary }, effectiveAssignees.length > 0 && { color: colors.primary }]} numberOfLines={1}>
                 {effectiveAssignees.length === 0 ? 'Assignee' : effectiveAssignees.length === 1 ? (effectiveAssignees[0].profile?.full_name?.split(' ')[0] || effectiveAssignees[0].profile?.email?.split('@')[0] || 'Member') : `${effectiveAssignees.length} Assignees`}
               </Text>
-              {effectiveAssignees.length > 0 && <ChevronDown size={12} color="#F97316" />}
+              {effectiveAssignees.length > 0 && <ChevronDown size={12} color={colors.primary} />}
             </TouchableOpacity>
 
             {/* Priority */}
             {(() => {
-              const pInfo = PRIORITIES.find(p => p.value === task?.priority) || PRIORITIES[1];
+              const pInfo = PRIORITIES.find(p => p.value === task?.priority) || PRIORITIES[0];
               return (
                 <TouchableOpacity style={[styles.bubble, { borderColor: pInfo.color + '40' }]} onPress={() => setShowPriorityPicker(true)}>
                   <Flag size={12} color={pInfo.color} />
@@ -617,9 +715,9 @@ export default function TaskDetailScreen() {
             })()}
 
             {/* Due Date */}
-            <TouchableOpacity style={[styles.bubble, dueDate ? { backgroundColor: '#FFF7ED', borderColor: '#FFEDD5' } : {}]} onPress={() => setShowDatePicker(true)}>
-              <CalendarIcon size={12} color={dueDate ? '#F97316' : '#94A3B8'} />
-              <Text style={[styles.bubbleText, dueDate ? { color: '#F97316' } : { color: '#94A3B8' }]}>
+            <TouchableOpacity style={[styles.bubble, { backgroundColor: colors.surface, borderColor: colors.border }, dueDate ? { backgroundColor: colors.primary + '10', borderColor: colors.primary + '40' } : {}]} onPress={() => setShowDatePicker(true)}>
+              <CalendarIcon size={12} color={dueDate ? colors.primary : colors.textTertiary} />
+              <Text style={[styles.bubbleText, dueDate ? { color: colors.primary } : { color: colors.textTertiary }]}>
                 {dueDate ? format(dueDate, 'MMM d') : 'Due date'}
               </Text>
               {dueDate && (
@@ -630,7 +728,7 @@ export default function TaskDetailScreen() {
             </TouchableOpacity>
           </ScrollView>
         </View>
-        <View style={styles.divider} />
+        <View style={[styles.divider, { backgroundColor: colors.borderLight }]} />
       </View>
 
       {/* ─── Tab Content ─── */}
@@ -674,7 +772,7 @@ export default function TaskDetailScreen() {
 
       {/* ─── Bottom Tab Bar (hidden when keyboard is up) ─── */}
       {!keyboardVisible && (
-        <View style={[styles.bottomTabBar, { paddingBottom: Math.max(insets.bottom, 8) }]}>
+        <View style={[styles.bottomTabBar, { paddingBottom: Math.max(insets.bottom, 8), backgroundColor: colors.card, borderTopColor: colors.border }]}>
           {TABS.map(tab => {
             const active = activeTab === tab.key;
             return (
@@ -684,13 +782,13 @@ export default function TaskDetailScreen() {
                 onPress={() => setActiveTab(tab.key)}
                 activeOpacity={0.7}
               >
-                <View style={[styles.bottomTabIconWrap, active && styles.bottomTabIconWrapActive]}>
-                  <tab.Icon size={18} color={active ? '#F97316' : '#94A3B8'} />
+                <View style={[styles.bottomTabIconWrap, active && { backgroundColor: colors.primary + '18' }]}>
+                  <tab.Icon size={18} color={active ? colors.primary : colors.textTertiary} />
                 </View>
-                <Text style={[styles.bottomTabText, active && styles.bottomTabTextActive]}>{tab.label}</Text>
+                <Text style={[styles.bottomTabText, { color: colors.textTertiary }, active && { color: colors.primary }]}>{tab.label}</Text>
                 {tab.count !== undefined && tab.count > 0 && (
-                  <View style={[styles.bottomTabBadge, active && styles.bottomTabBadgeActive]}>
-                    <Text style={[styles.bottomTabBadgeText, active && styles.bottomTabBadgeTextActive]}>{tab.count}</Text>
+                  <View style={[styles.bottomTabBadge, { backgroundColor: colors.surface }, active && { backgroundColor: colors.primary + '20' }]}>
+                    <Text style={[styles.bottomTabBadgeText, { color: colors.textTertiary }, active && { color: colors.primary }]}>{tab.count}</Text>
                   </View>
                 )}
               </TouchableOpacity>
@@ -702,12 +800,12 @@ export default function TaskDetailScreen() {
       {/* ─── 3-Dot Options Menu ─── */}
       <Modal visible={showOptionsMenu} transparent animationType="fade" onRequestClose={() => setShowOptionsMenu(false)}>
         <TouchableOpacity style={styles.menuOverlay} activeOpacity={1} onPress={() => setShowOptionsMenu(false)}>
-          <View style={styles.menuSheet}>
+          <View style={[styles.menuSheet, { backgroundColor: colors.card }]}>
             <TouchableOpacity style={styles.menuItem} onPress={() => { setShowOptionsMenu(false); setShowTransferPicker(true); }}>
               <FolderKanban size={18} color="#3B82F6" />
-              <Text style={styles.menuItemText}>Transfer to Project</Text>
+              <Text style={[styles.menuItemText, { color: colors.text }]}>Transfer to Project</Text>
             </TouchableOpacity>
-            <View style={styles.menuDivider} />
+            <View style={[styles.menuDivider, { backgroundColor: colors.border }]} />
             <TouchableOpacity style={styles.menuItem} onPress={handleDeleteTask}>
               <Trash2 size={18} color="#EF4444" />
               <Text style={[styles.menuItemText, { color: '#EF4444' }]}>Delete Task</Text>
@@ -736,57 +834,57 @@ export default function TaskDetailScreen() {
         onStatusChange={handlePauseStatusChange}
       />
       {/* ─── Picker Modals ─── */}
-      <PickerModal visible={showStatusPicker} onClose={() => setShowStatusPicker(false)} title="Select Status" options={statuses.map(st => ({ value: st.id, label: st.name, color: st.color, subtitle: st.is_default ? 'Default' : st.is_completed ? 'Completed' : undefined }))} selectedValue={task?.custom_status_id} onSelect={handleStatusChange} />
-      <PickerModal visible={showPriorityPicker} onClose={() => setShowPriorityPicker(false)} title="Select Priority" options={PRIORITIES.map(p => ({ value: p.value, label: p.label, color: p.color }))} selectedValue={task?.priority} onSelect={handlePriorityChange} />
+      <PickerModal visible={showStatusPicker} onClose={() => setShowStatusPicker(false)} title="Select Status" options={statuses.map(st => ({ value: st.id, label: st.name, color: st.color, subtitle: st.category === 'done' || st.category === 'cancelled' ? 'Completed' : st.is_default ? 'Default' : undefined }))} selectedValue={task?.custom_status_id} onSelect={handleStatusChange} />
+      <PickerModal visible={showPriorityPicker} onClose={() => setShowPriorityPicker(false)} title="Select Priority" options={PRIORITIES.map(p => ({ value: p.value, label: p.label, color: p.color }))} selectedValue={task?.priority || 'low'} onSelect={handlePriorityChange} />
 
       {/* ─── Date Picker Modal ─── */}
       <Modal visible={showDatePicker} transparent animationType="slide" onRequestClose={() => setShowDatePicker(false)}>
         <TouchableOpacity style={dpStyles.overlay} activeOpacity={1} onPress={() => setShowDatePicker(false)}>
-          <TouchableOpacity style={dpStyles.sheet} activeOpacity={1} onPress={() => { }}>
-            <View style={dpStyles.handle} />
+          <TouchableOpacity style={[dpStyles.sheet, { backgroundColor: colors.card }]} activeOpacity={1} onPress={() => { }}>
+            <View style={[dpStyles.handle, { backgroundColor: colors.border }]} />
             <View style={dpStyles.header}>
-              <Text style={dpStyles.title}>Set Due Date</Text>
-              <TouchableOpacity onPress={() => setShowDatePicker(false)} style={dpStyles.closeBtn}>
-                <X size={20} color="#64748B" />
+              <Text style={[dpStyles.title, { color: colors.text }]}>Set Due Date</Text>
+              <TouchableOpacity onPress={() => setShowDatePicker(false)} style={[dpStyles.closeBtn, { backgroundColor: colors.surface }]}>
+                <X size={20} color={colors.textSecondary} />
               </TouchableOpacity>
             </View>
 
             {/* Quick date shortcuts */}
             <View style={dpStyles.shortcuts}>
-              <TouchableOpacity style={dpStyles.shortcut} onPress={() => handleQuickDate(new Date())}>
+              <TouchableOpacity style={[dpStyles.shortcut, { backgroundColor: colors.surface, borderColor: colors.border }]} onPress={() => handleQuickDate(new Date())}>
                 <View style={[dpStyles.shortcutIcon, { backgroundColor: '#FFF7ED' }]}>
                   <Sun size={16} color="#F97316" />
                 </View>
-                <Text style={dpStyles.shortcutText}>Today</Text>
+                <Text style={[dpStyles.shortcutText, { color: colors.textSecondary }]}>Today</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={dpStyles.shortcut} onPress={() => handleQuickDate(addDays(new Date(), 1))}>
+              <TouchableOpacity style={[dpStyles.shortcut, { backgroundColor: colors.surface, borderColor: colors.border }]} onPress={() => handleQuickDate(addDays(new Date(), 1))}>
                 <View style={[dpStyles.shortcutIcon, { backgroundColor: '#EFF6FF' }]}>
                   <Sunrise size={16} color="#3B82F6" />
                 </View>
-                <Text style={dpStyles.shortcutText}>Tomorrow</Text>
+                <Text style={[dpStyles.shortcutText, { color: colors.textSecondary }]}>Tomorrow</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={dpStyles.shortcut} onPress={() => handleQuickDate(nextMonday(new Date()))}>
+              <TouchableOpacity style={[dpStyles.shortcut, { backgroundColor: colors.surface, borderColor: colors.border }]} onPress={() => handleQuickDate(nextMonday(new Date()))}>
                 <View style={[dpStyles.shortcutIcon, { backgroundColor: '#F5F3FF' }]}>
                   <CalendarDays size={16} color="#8B5CF6" />
                 </View>
-                <Text style={dpStyles.shortcutText}>Next Mon</Text>
+                <Text style={[dpStyles.shortcutText, { color: colors.textSecondary }]}>Next Mon</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={dpStyles.shortcut} onPress={() => handleQuickDate(addDays(new Date(), 7))}>
+              <TouchableOpacity style={[dpStyles.shortcut, { backgroundColor: colors.surface, borderColor: colors.border }]} onPress={() => handleQuickDate(addDays(new Date(), 7))}>
                 <View style={[dpStyles.shortcutIcon, { backgroundColor: '#F0FDF4' }]}>
                   <CalendarIcon size={16} color="#22C55E" />
                 </View>
-                <Text style={dpStyles.shortcutText}>+1 Week</Text>
+                <Text style={[dpStyles.shortcutText, { color: colors.textSecondary }]}>+1 Week</Text>
               </TouchableOpacity>
             </View>
 
-            {/* Calendar — force light theme to prevent white-on-white */}
-            <View style={dpStyles.calendarContainer}>
+            {/* Calendar */}
+            <View style={[dpStyles.calendarContainer, { backgroundColor: colors.card, borderColor: colors.border }]}>
               <DateTimePicker
                 value={tempDate}
                 mode="date"
                 display="inline"
                 onChange={(_e, d) => { if (d) setTempDate(d); }}
-                accentColor="#F97316"
+                accentColor={colors.primary}
                 themeVariant="light"
                 style={{ alignSelf: 'center', width: '100%' }}
               />
@@ -800,7 +898,7 @@ export default function TaskDetailScreen() {
                   <Text style={dpStyles.clearText}>Clear Date</Text>
                 </TouchableOpacity>
               )}
-              <TouchableOpacity style={dpStyles.confirmBtn} onPress={() => handleDateConfirm(tempDate)}>
+              <TouchableOpacity style={[dpStyles.confirmBtn, { backgroundColor: colors.primary }]} onPress={() => handleDateConfirm(tempDate)}>
                 <Text style={dpStyles.confirmText}>Set Date</Text>
               </TouchableOpacity>
             </View>
@@ -839,7 +937,10 @@ const styles = StyleSheet.create({
   headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
   headerBtn: { padding: 6, borderRadius: 10, backgroundColor: '#F8FAFC' },
   headerInfo: { flex: 1 },
+  headerCenter: { flex: 1, marginLeft: 8 },
+  headerRight: { marginLeft: 8 },
   headerTitle: { fontSize: 14, fontWeight: '700', color: '#0F172A' },
+  headerSubtitle: { fontSize: 11, fontWeight: '500', marginTop: 2 },
   headerProject: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
   headerDot: { width: 6, height: 6, borderRadius: 3 },
   headerProjectText: { fontSize: 11, color: '#64748B', fontWeight: '500' },

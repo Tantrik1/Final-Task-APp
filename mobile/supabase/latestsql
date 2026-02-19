@@ -1,0 +1,587 @@
+-- WARNING: This schema is for context only and is not meant to be run.
+-- Table order and constraints may not be valid for execution.
+
+CREATE TABLE public.activity_logs (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL,
+  project_id uuid,
+  task_id uuid,
+  actor_id uuid,
+  action_type text NOT NULL,
+  entity_type text NOT NULL,
+  entity_id uuid NOT NULL,
+  description text NOT NULL,
+  metadata jsonb DEFAULT '{}'::jsonb,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT activity_logs_pkey PRIMARY KEY (id),
+  CONSTRAINT activity_logs_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES public.workspaces(id),
+  CONSTRAINT activity_logs_project_id_fkey FOREIGN KEY (project_id) REFERENCES public.projects(id),
+  CONSTRAINT activity_logs_task_id_fkey FOREIGN KEY (task_id) REFERENCES public.tasks(id),
+  CONSTRAINT activity_logs_actor_id_fkey FOREIGN KEY (actor_id) REFERENCES public.profiles(id)
+);
+CREATE TABLE public.ai_conversations (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL,
+  workspace_id uuid NOT NULL,
+  title text NOT NULL,
+  created_at timestamp with time zone DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT ai_conversations_pkey PRIMARY KEY (id),
+  CONSTRAINT ai_conversations_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.profiles(id),
+  CONSTRAINT ai_conversations_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES public.workspaces(id)
+);
+CREATE TABLE public.ai_messages (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  conversation_id uuid NOT NULL,
+  role text NOT NULL CHECK (role = ANY (ARRAY['user'::text, 'assistant'::text, 'system'::text])),
+  content text NOT NULL,
+  actions jsonb,
+  timestamp timestamp with time zone DEFAULT now(),
+  CONSTRAINT ai_messages_pkey PRIMARY KEY (id),
+  CONSTRAINT ai_messages_conversation_id_fkey FOREIGN KEY (conversation_id) REFERENCES public.ai_conversations(id)
+);
+CREATE TABLE public.channel_members (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  channel_id uuid NOT NULL,
+  user_id uuid NOT NULL,
+  role USER-DEFINED NOT NULL DEFAULT 'member'::channel_member_role,
+  joined_at timestamp with time zone NOT NULL DEFAULT now(),
+  added_by uuid,
+  CONSTRAINT channel_members_pkey PRIMARY KEY (id),
+  CONSTRAINT channel_members_channel_id_fkey FOREIGN KEY (channel_id) REFERENCES public.channels(id),
+  CONSTRAINT channel_members_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.profiles(id),
+  CONSTRAINT channel_members_added_by_fkey FOREIGN KEY (added_by) REFERENCES public.profiles(id)
+);
+CREATE TABLE public.channel_read_status (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  channel_id uuid NOT NULL,
+  user_id uuid NOT NULL,
+  last_read_at timestamp with time zone NOT NULL DEFAULT now(),
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT channel_read_status_pkey PRIMARY KEY (id),
+  CONSTRAINT channel_read_status_channel_id_fkey FOREIGN KEY (channel_id) REFERENCES public.channels(id),
+  CONSTRAINT channel_read_status_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.profiles(id)
+);
+CREATE TABLE public.channels (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL,
+  name text NOT NULL,
+  type text NOT NULL DEFAULT 'general'::text,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  description text,
+  created_by uuid,
+  CONSTRAINT channels_pkey PRIMARY KEY (id),
+  CONSTRAINT channels_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES public.workspaces(id),
+  CONSTRAINT channels_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.profiles(id)
+);
+CREATE TABLE public.custom_field_definitions (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  project_id uuid NOT NULL,
+  name text NOT NULL,
+  field_type USER-DEFINED NOT NULL DEFAULT 'text'::custom_field_type,
+  options jsonb DEFAULT '[]'::jsonb,
+  is_required boolean NOT NULL DEFAULT false,
+  position integer NOT NULL DEFAULT 0,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT custom_field_definitions_pkey PRIMARY KEY (id),
+  CONSTRAINT custom_field_definitions_project_id_fkey FOREIGN KEY (project_id) REFERENCES public.projects(id)
+);
+CREATE TABLE public.dm_conversations (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL,
+  participant_1 uuid NOT NULL,
+  participant_2 uuid NOT NULL,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT dm_conversations_pkey PRIMARY KEY (id),
+  CONSTRAINT dm_conversations_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES public.workspaces(id),
+  CONSTRAINT dm_conversations_participant_1_fkey FOREIGN KEY (participant_1) REFERENCES public.profiles(id),
+  CONSTRAINT dm_conversations_participant_2_fkey FOREIGN KEY (participant_2) REFERENCES public.profiles(id)
+);
+CREATE TABLE public.dm_messages (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  conversation_id uuid NOT NULL,
+  sender_id uuid NOT NULL,
+  content text NOT NULL,
+  is_edited boolean NOT NULL DEFAULT false,
+  edited_at timestamp with time zone,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT dm_messages_pkey PRIMARY KEY (id),
+  CONSTRAINT dm_messages_conversation_id_fkey FOREIGN KEY (conversation_id) REFERENCES public.dm_conversations(id),
+  CONSTRAINT dm_messages_sender_id_fkey FOREIGN KEY (sender_id) REFERENCES public.profiles(id)
+);
+CREATE TABLE public.dm_read_status (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  conversation_id uuid NOT NULL,
+  user_id uuid NOT NULL,
+  last_read_at timestamp with time zone NOT NULL DEFAULT now(),
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT dm_read_status_pkey PRIMARY KEY (id),
+  CONSTRAINT dm_read_status_conversation_id_fkey FOREIGN KEY (conversation_id) REFERENCES public.dm_conversations(id),
+  CONSTRAINT dm_read_status_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.profiles(id)
+);
+CREATE TABLE public.feature_flags (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  name text NOT NULL,
+  key text NOT NULL UNIQUE,
+  description text,
+  is_enabled boolean NOT NULL DEFAULT true,
+  min_plan_position integer NOT NULL DEFAULT 0,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT feature_flags_pkey PRIMARY KEY (id)
+);
+CREATE TABLE public.messages (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  channel_id uuid NOT NULL,
+  sender_id uuid NOT NULL,
+  content text NOT NULL,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  reply_to_id uuid,
+  is_edited boolean NOT NULL DEFAULT false,
+  edited_at timestamp with time zone,
+  CONSTRAINT messages_pkey PRIMARY KEY (id),
+  CONSTRAINT messages_channel_id_fkey FOREIGN KEY (channel_id) REFERENCES public.channels(id),
+  CONSTRAINT messages_sender_id_fkey FOREIGN KEY (sender_id) REFERENCES public.profiles(id),
+  CONSTRAINT messages_reply_to_id_fkey FOREIGN KEY (reply_to_id) REFERENCES public.messages(id)
+);
+CREATE TABLE public.notification_logs (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  notification_id uuid,
+  event_type text NOT NULL,
+  event_data jsonb DEFAULT '{}'::jsonb,
+  created_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT notification_logs_pkey PRIMARY KEY (id),
+  CONSTRAINT notification_logs_notification_id_fkey FOREIGN KEY (notification_id) REFERENCES public.notifications(id)
+);
+CREATE TABLE public.notification_preferences (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL,
+  workspace_id uuid NOT NULL,
+  task_assigned boolean NOT NULL DEFAULT true,
+  task_status_changed boolean NOT NULL DEFAULT true,
+  task_completed boolean NOT NULL DEFAULT true,
+  comment_added boolean NOT NULL DEFAULT true,
+  comment_reply boolean NOT NULL DEFAULT true,
+  project_updates boolean NOT NULL DEFAULT true,
+  member_updates boolean NOT NULL DEFAULT false,
+  chat_mentions boolean NOT NULL DEFAULT true,
+  due_date_reminders boolean NOT NULL DEFAULT true,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  push_enabled boolean DEFAULT false,
+  quiet_hours_enabled boolean DEFAULT true,
+  quiet_hours_start integer DEFAULT 22,
+  quiet_hours_end integer DEFAULT 7,
+  push_soft_declined_at timestamp with time zone,
+  timezone text DEFAULT 'Asia/Kathmandu'::text,
+  CONSTRAINT notification_preferences_pkey PRIMARY KEY (id),
+  CONSTRAINT notification_preferences_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.profiles(id),
+  CONSTRAINT notification_preferences_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES public.workspaces(id)
+);
+CREATE TABLE public.notifications (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL,
+  user_id uuid NOT NULL,
+  actor_id uuid,
+  type USER-DEFINED NOT NULL,
+  title text NOT NULL,
+  body text NOT NULL,
+  entity_type USER-DEFINED NOT NULL,
+  entity_id uuid NOT NULL,
+  metadata jsonb DEFAULT '{}'::jsonb,
+  is_read boolean NOT NULL DEFAULT false,
+  read_at timestamp with time zone,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  pushed boolean DEFAULT false,
+  pushed_at timestamp with time zone,
+  CONSTRAINT notifications_pkey PRIMARY KEY (id),
+  CONSTRAINT notifications_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES public.workspaces(id),
+  CONSTRAINT notifications_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.profiles(id),
+  CONSTRAINT notifications_actor_id_fkey FOREIGN KEY (actor_id) REFERENCES public.profiles(id)
+);
+CREATE TABLE public.payment_history (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL,
+  amount_npr integer NOT NULL,
+  plan_name text NOT NULL,
+  months_paid integer NOT NULL DEFAULT 1,
+  paid_at timestamp with time zone NOT NULL DEFAULT now(),
+  payment_method text,
+  receipt_url text,
+  payment_submission_id uuid,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT payment_history_pkey PRIMARY KEY (id),
+  CONSTRAINT payment_history_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES public.workspaces(id),
+  CONSTRAINT payment_history_payment_submission_id_fkey FOREIGN KEY (payment_submission_id) REFERENCES public.payment_submissions(id)
+);
+CREATE TABLE public.payment_methods (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  name text NOT NULL,
+  qr_image_url text,
+  instructions text,
+  is_active boolean NOT NULL DEFAULT true,
+  position integer NOT NULL DEFAULT 0,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT payment_methods_pkey PRIMARY KEY (id)
+);
+CREATE TABLE public.payment_submissions (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL,
+  plan_id uuid NOT NULL,
+  payment_method_id uuid,
+  amount_npr integer NOT NULL,
+  months_paid integer NOT NULL DEFAULT 1,
+  screenshot_url text NOT NULL,
+  status USER-DEFINED NOT NULL DEFAULT 'pending'::payment_status,
+  submitted_by uuid NOT NULL,
+  verified_by uuid,
+  verified_at timestamp with time zone,
+  admin_notes text,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT payment_submissions_pkey PRIMARY KEY (id),
+  CONSTRAINT payment_submissions_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES public.workspaces(id),
+  CONSTRAINT payment_submissions_plan_id_fkey FOREIGN KEY (plan_id) REFERENCES public.subscription_plans(id),
+  CONSTRAINT payment_submissions_payment_method_id_fkey FOREIGN KEY (payment_method_id) REFERENCES public.payment_methods(id),
+  CONSTRAINT payment_submissions_submitted_by_fkey FOREIGN KEY (submitted_by) REFERENCES public.profiles(id),
+  CONSTRAINT payment_submissions_verified_by_fkey FOREIGN KEY (verified_by) REFERENCES public.profiles(id)
+);
+CREATE TABLE public.profiles (
+  id uuid NOT NULL,
+  email text NOT NULL,
+  full_name text,
+  avatar_url text,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  needs_password_reset boolean DEFAULT false,
+  CONSTRAINT profiles_pkey PRIMARY KEY (id),
+  CONSTRAINT profiles_id_fkey FOREIGN KEY (id) REFERENCES auth.users(id)
+);
+CREATE TABLE public.project_statuses (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  project_id uuid NOT NULL,
+  name text NOT NULL,
+  color text NOT NULL DEFAULT '#6366f1'::text,
+  position integer NOT NULL DEFAULT 0,
+  is_default boolean NOT NULL DEFAULT false,
+  is_completed boolean NOT NULL DEFAULT false,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  category USER-DEFINED NOT NULL DEFAULT 'active'::status_category,
+  CONSTRAINT project_statuses_pkey PRIMARY KEY (id),
+  CONSTRAINT project_statuses_project_id_fkey FOREIGN KEY (project_id) REFERENCES public.projects(id)
+);
+CREATE TABLE public.project_templates (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL,
+  name text NOT NULL,
+  description text,
+  icon text DEFAULT 'folder'::text,
+  color text DEFAULT '#6366f1'::text,
+  is_public boolean NOT NULL DEFAULT false,
+  created_by uuid NOT NULL,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  is_system boolean DEFAULT false,
+  CONSTRAINT project_templates_pkey PRIMARY KEY (id),
+  CONSTRAINT project_templates_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES public.workspaces(id),
+  CONSTRAINT project_templates_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.profiles(id)
+);
+CREATE TABLE public.project_views (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  project_id uuid NOT NULL,
+  name text NOT NULL,
+  view_type text NOT NULL,
+  config jsonb DEFAULT '{}'::jsonb,
+  position integer NOT NULL DEFAULT 0,
+  is_default boolean NOT NULL DEFAULT false,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT project_views_pkey PRIMARY KEY (id),
+  CONSTRAINT project_views_project_id_fkey FOREIGN KEY (project_id) REFERENCES public.projects(id)
+);
+CREATE TABLE public.projects (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL,
+  name text NOT NULL,
+  description text,
+  color text DEFAULT '#6366f1'::text,
+  icon text DEFAULT 'folder'::text,
+  is_archived boolean NOT NULL DEFAULT false,
+  created_by uuid NOT NULL,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT projects_pkey PRIMARY KEY (id),
+  CONSTRAINT projects_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES public.workspaces(id),
+  CONSTRAINT projects_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.profiles(id)
+);
+CREATE TABLE public.push_subscriptions (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL,
+  endpoint text NOT NULL,
+  p256dh text NOT NULL,
+  auth text NOT NULL,
+  platform text NOT NULL DEFAULT 'unknown'::text,
+  user_agent text,
+  is_active boolean NOT NULL DEFAULT true,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  last_used_at timestamp with time zone,
+  failed_count integer NOT NULL DEFAULT 0,
+  CONSTRAINT push_subscriptions_pkey PRIMARY KEY (id),
+  CONSTRAINT push_subscriptions_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.profiles(id)
+);
+CREATE TABLE public.site_pages (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  slug text NOT NULL UNIQUE,
+  title text NOT NULL,
+  meta_description text,
+  content jsonb NOT NULL DEFAULT '{}'::jsonb,
+  is_published boolean NOT NULL DEFAULT false,
+  category text NOT NULL CHECK (category = ANY (ARRAY['product'::text, 'company'::text, 'resources'::text, 'legal'::text])),
+  icon text DEFAULT 'file-text'::text,
+  position integer NOT NULL DEFAULT 0,
+  updated_by uuid,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT site_pages_pkey PRIMARY KEY (id),
+  CONSTRAINT site_pages_updated_by_fkey FOREIGN KEY (updated_by) REFERENCES public.profiles(id)
+);
+CREATE TABLE public.status_transitions (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  task_id uuid NOT NULL,
+  from_status_id uuid,
+  to_status_id uuid NOT NULL,
+  from_category USER-DEFINED,
+  to_category USER-DEFINED NOT NULL,
+  changed_by uuid,
+  changed_at timestamp with time zone NOT NULL DEFAULT now(),
+  time_in_previous_ms bigint,
+  CONSTRAINT status_transitions_pkey PRIMARY KEY (id),
+  CONSTRAINT status_transitions_task_id_fkey FOREIGN KEY (task_id) REFERENCES public.tasks(id),
+  CONSTRAINT status_transitions_from_status_id_fkey FOREIGN KEY (from_status_id) REFERENCES public.project_statuses(id),
+  CONSTRAINT status_transitions_to_status_id_fkey FOREIGN KEY (to_status_id) REFERENCES public.project_statuses(id),
+  CONSTRAINT status_transitions_changed_by_fkey FOREIGN KEY (changed_by) REFERENCES public.profiles(id)
+);
+CREATE TABLE public.subscription_plans (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  name text NOT NULL,
+  description text,
+  price_npr integer NOT NULL DEFAULT 0,
+  max_members integer,
+  max_projects integer,
+  features jsonb NOT NULL DEFAULT '{}'::jsonb,
+  badge_text text,
+  is_active boolean NOT NULL DEFAULT true,
+  position integer NOT NULL DEFAULT 0,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT subscription_plans_pkey PRIMARY KEY (id)
+);
+CREATE TABLE public.super_admins (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL UNIQUE,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  created_by uuid,
+  CONSTRAINT super_admins_pkey PRIMARY KEY (id),
+  CONSTRAINT super_admins_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.profiles(id),
+  CONSTRAINT super_admins_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.profiles(id)
+);
+CREATE TABLE public.task_assignees (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  task_id uuid NOT NULL,
+  user_id uuid NOT NULL,
+  assigned_at timestamp with time zone NOT NULL DEFAULT now(),
+  assigned_by uuid,
+  CONSTRAINT task_assignees_pkey PRIMARY KEY (id),
+  CONSTRAINT task_assignees_task_id_fkey FOREIGN KEY (task_id) REFERENCES public.tasks(id),
+  CONSTRAINT task_assignees_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.profiles(id),
+  CONSTRAINT task_assignees_assigned_by_fkey FOREIGN KEY (assigned_by) REFERENCES public.profiles(id)
+);
+CREATE TABLE public.task_attachments (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  task_id uuid NOT NULL,
+  user_id uuid NOT NULL,
+  file_name text NOT NULL,
+  file_type text NOT NULL,
+  file_size integer NOT NULL,
+  file_url text NOT NULL,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT task_attachments_pkey PRIMARY KEY (id),
+  CONSTRAINT task_attachments_task_id_fkey FOREIGN KEY (task_id) REFERENCES public.tasks(id),
+  CONSTRAINT task_attachments_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.profiles(id)
+);
+CREATE TABLE public.task_comments (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  task_id uuid NOT NULL,
+  user_id uuid NOT NULL,
+  parent_id uuid,
+  content text NOT NULL,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT task_comments_pkey PRIMARY KEY (id),
+  CONSTRAINT task_comments_task_id_fkey FOREIGN KEY (task_id) REFERENCES public.tasks(id),
+  CONSTRAINT task_comments_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.profiles(id),
+  CONSTRAINT task_comments_parent_id_fkey FOREIGN KEY (parent_id) REFERENCES public.task_comments(id)
+);
+CREATE TABLE public.task_custom_field_values (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  task_id uuid NOT NULL,
+  field_id uuid NOT NULL,
+  value_text text,
+  value_number numeric,
+  value_date date,
+  value_boolean boolean,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT task_custom_field_values_pkey PRIMARY KEY (id),
+  CONSTRAINT task_custom_field_values_task_id_fkey FOREIGN KEY (task_id) REFERENCES public.tasks(id),
+  CONSTRAINT task_custom_field_values_field_id_fkey FOREIGN KEY (field_id) REFERENCES public.custom_field_definitions(id)
+);
+CREATE TABLE public.task_links (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  task_id uuid NOT NULL,
+  user_id uuid NOT NULL,
+  title text NOT NULL,
+  url text NOT NULL,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT task_links_pkey PRIMARY KEY (id),
+  CONSTRAINT task_links_task_id_fkey FOREIGN KEY (task_id) REFERENCES public.tasks(id),
+  CONSTRAINT task_links_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.profiles(id)
+);
+CREATE TABLE public.task_work_sessions (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  task_id uuid NOT NULL,
+  user_id uuid NOT NULL,
+  started_at timestamp with time zone NOT NULL DEFAULT now(),
+  ended_at timestamp with time zone,
+  duration_seconds integer DEFAULT 0,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT task_work_sessions_pkey PRIMARY KEY (id),
+  CONSTRAINT task_work_sessions_task_id_fkey FOREIGN KEY (task_id) REFERENCES public.tasks(id),
+  CONSTRAINT task_work_sessions_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.profiles(id)
+);
+CREATE TABLE public.tasks (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  project_id uuid NOT NULL,
+  title text NOT NULL,
+  description text,
+  status USER-DEFINED NOT NULL DEFAULT 'todo'::task_status,
+  priority USER-DEFINED NOT NULL DEFAULT 'medium'::task_priority,
+  due_date date,
+  assigned_to uuid,
+  position integer NOT NULL DEFAULT 0,
+  created_by uuid NOT NULL,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  first_started_at timestamp with time zone,
+  completed_at timestamp with time zone,
+  total_work_time integer DEFAULT 0,
+  is_timer_running boolean DEFAULT false,
+  custom_status_id uuid,
+  CONSTRAINT tasks_pkey PRIMARY KEY (id),
+  CONSTRAINT tasks_project_id_fkey FOREIGN KEY (project_id) REFERENCES public.projects(id),
+  CONSTRAINT tasks_assigned_to_fkey FOREIGN KEY (assigned_to) REFERENCES public.profiles(id),
+  CONSTRAINT tasks_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.profiles(id),
+  CONSTRAINT tasks_custom_status_id_fkey FOREIGN KEY (custom_status_id) REFERENCES public.project_statuses(id)
+);
+CREATE TABLE public.template_custom_fields (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  template_id uuid NOT NULL,
+  name text NOT NULL,
+  field_type USER-DEFINED NOT NULL DEFAULT 'text'::custom_field_type,
+  options jsonb DEFAULT '[]'::jsonb,
+  is_required boolean NOT NULL DEFAULT false,
+  position integer NOT NULL DEFAULT 0,
+  CONSTRAINT template_custom_fields_pkey PRIMARY KEY (id),
+  CONSTRAINT template_custom_fields_template_id_fkey FOREIGN KEY (template_id) REFERENCES public.project_templates(id)
+);
+CREATE TABLE public.template_statuses (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  template_id uuid NOT NULL,
+  name text NOT NULL,
+  color text NOT NULL DEFAULT '#6366f1'::text,
+  position integer NOT NULL DEFAULT 0,
+  is_default boolean NOT NULL DEFAULT false,
+  is_completed boolean NOT NULL DEFAULT false,
+  category USER-DEFINED NOT NULL DEFAULT 'active'::status_category,
+  CONSTRAINT template_statuses_pkey PRIMARY KEY (id),
+  CONSTRAINT template_statuses_template_id_fkey FOREIGN KEY (template_id) REFERENCES public.project_templates(id)
+);
+CREATE TABLE public.template_tasks (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  template_id uuid NOT NULL,
+  title text NOT NULL,
+  description text,
+  priority USER-DEFINED NOT NULL DEFAULT 'medium'::task_priority,
+  status_position integer NOT NULL DEFAULT 0,
+  position integer NOT NULL DEFAULT 0,
+  days_offset integer DEFAULT 0,
+  CONSTRAINT template_tasks_pkey PRIMARY KEY (id),
+  CONSTRAINT template_tasks_template_id_fkey FOREIGN KEY (template_id) REFERENCES public.project_templates(id)
+);
+CREATE TABLE public.template_views (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  template_id uuid NOT NULL,
+  name text NOT NULL,
+  view_type text NOT NULL,
+  config jsonb DEFAULT '{}'::jsonb,
+  position integer NOT NULL DEFAULT 0,
+  is_default boolean NOT NULL DEFAULT false,
+  CONSTRAINT template_views_pkey PRIMARY KEY (id),
+  CONSTRAINT template_views_template_id_fkey FOREIGN KEY (template_id) REFERENCES public.project_templates(id)
+);
+CREATE TABLE public.workspace_invitations (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL,
+  email text NOT NULL,
+  role USER-DEFINED NOT NULL DEFAULT 'member'::workspace_role,
+  token text NOT NULL DEFAULT encode(gen_random_bytes(32), 'hex'::text) UNIQUE,
+  invited_by uuid NOT NULL,
+  expires_at timestamp with time zone NOT NULL DEFAULT (now() + '7 days'::interval),
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  status text NOT NULL DEFAULT 'pending'::text CHECK (status = ANY (ARRAY['pending'::text, 'accepted'::text, 'declined'::text])),
+  CONSTRAINT workspace_invitations_pkey PRIMARY KEY (id),
+  CONSTRAINT workspace_invitations_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES public.workspaces(id),
+  CONSTRAINT workspace_invitations_invited_by_fkey FOREIGN KEY (invited_by) REFERENCES public.profiles(id)
+);
+CREATE TABLE public.workspace_members (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL,
+  user_id uuid NOT NULL,
+  role USER-DEFINED NOT NULL DEFAULT 'member'::workspace_role,
+  invited_by uuid,
+  joined_at timestamp with time zone NOT NULL DEFAULT now(),
+  last_active_at timestamp with time zone,
+  CONSTRAINT workspace_members_pkey PRIMARY KEY (id),
+  CONSTRAINT workspace_members_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES public.workspaces(id),
+  CONSTRAINT workspace_members_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.profiles(id),
+  CONSTRAINT workspace_members_invited_by_fkey FOREIGN KEY (invited_by) REFERENCES public.profiles(id)
+);
+CREATE TABLE public.workspace_subscriptions (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL UNIQUE,
+  plan_id uuid NOT NULL,
+  status USER-DEFINED NOT NULL DEFAULT 'trial'::subscription_status,
+  starts_at timestamp with time zone NOT NULL DEFAULT now(),
+  expires_at timestamp with time zone,
+  trial_ends_at timestamp with time zone,
+  member_count integer NOT NULL DEFAULT 1,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT workspace_subscriptions_pkey PRIMARY KEY (id),
+  CONSTRAINT workspace_subscriptions_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES public.workspaces(id),
+  CONSTRAINT workspace_subscriptions_plan_id_fkey FOREIGN KEY (plan_id) REFERENCES public.subscription_plans(id)
+);
+CREATE TABLE public.workspaces (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  name text NOT NULL,
+  description text,
+  logo_url text,
+  created_by uuid NOT NULL,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT workspaces_pkey PRIMARY KEY (id),
+  CONSTRAINT workspaces_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.profiles(id)
+);

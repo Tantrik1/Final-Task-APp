@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
 
@@ -33,47 +33,35 @@ export function useDirectMessages(workspaceId: string | undefined) {
         if (!workspaceId || !user) return;
 
         try {
-            const { data, error } = await supabase
-                .from('dm_conversations')
-                .select('*')
-                .eq('workspace_id', workspaceId)
-                .or(`participant_1.eq.${user.id},participant_2.eq.${user.id}`)
-                .order('updated_at', { ascending: false });
+            // Use optimized RPC - single query instead of N+1
+            const { data, error } = await supabase.rpc('get_dm_conversations_optimized', {
+                p_workspace_id: workspaceId,
+                p_user_id: user.id,
+            });
 
             if (error) throw error;
 
-            const conversationsWithDetails = await Promise.all(
-                (data || []).map(async (conv: any) => {
-                    const otherUserId = conv.participant_1 === user.id ? conv.participant_2 : conv.participant_1;
-
-                    const { data: profileData } = await supabase
-                        .from('profiles')
-                        .select('id, email, full_name, avatar_url')
-                        .eq('id', otherUserId)
-                        .single();
-
-                    const { data: lastMsgData } = await supabase
-                        .from('dm_messages')
-                        .select('content, created_at, sender_id')
-                        .eq('conversation_id', conv.id)
-                        .order('created_at', { ascending: false })
-                        .limit(1)
-                        .single();
-
-                    const { data: unreadCount } = await supabase
-                        .rpc('get_dm_unread_count', {
-                            p_conversation_id: conv.id,
-                            p_user_id: user.id,
-                        });
-
-                    return {
-                        ...conv,
-                        other_user: profileData,
-                        last_message: lastMsgData || null,
-                        unread_count: unreadCount || 0,
-                    } as DMConversation;
-                })
-            );
+            // Map RPC result to DMConversation format
+            const conversationsWithDetails = (data || []).map((row: any) => ({
+                id: row.id,
+                workspace_id: row.workspace_id,
+                participant_1: row.participant_1,
+                participant_2: row.participant_2,
+                created_at: row.created_at,
+                updated_at: row.updated_at,
+                other_user: {
+                    id: row.other_user_id,
+                    email: row.other_user_email,
+                    full_name: row.other_user_full_name,
+                    avatar_url: row.other_user_avatar_url,
+                },
+                last_message: row.last_message_content ? {
+                    content: row.last_message_content,
+                    created_at: row.last_message_created_at,
+                    sender_id: row.last_message_sender_id,
+                } : null,
+                unread_count: row.unread_count,
+            }));
 
             setConversations(conversationsWithDetails);
         } catch (error) {
@@ -201,11 +189,13 @@ export function useDirectMessages(workspaceId: string | undefined) {
         };
     }, [workspaceId, user, fetchConversations]);
 
+    // Use refs to avoid re-subscribing on every state change
+    const activeConvRef = useRef(activeConversation);
+    useEffect(() => { activeConvRef.current = activeConversation; }, [activeConversation]);
+
     // Subscribe to new DM messages for unread counts
     useEffect(() => {
-        if (!workspaceId || conversations.length === 0 || !user) return;
-
-        const conversationIds = conversations.map(c => c.id);
+        if (!workspaceId || !user) return;
 
         const subscription = supabase
             .channel(`dm_messages_unread:${workspaceId}:${user.id}`)
@@ -218,41 +208,26 @@ export function useDirectMessages(workspaceId: string | undefined) {
                 },
                 (payload) => {
                     const newMessage = payload.new as { conversation_id: string; sender_id: string; content: string; created_at: string };
+                    if (newMessage.sender_id === user.id) return;
 
-                    if (conversationIds.includes(newMessage.conversation_id) && newMessage.sender_id !== user.id) {
-                        if (activeConversation?.id !== newMessage.conversation_id) {
-                            setConversations(prev =>
-                                prev.map(c =>
-                                    c.id === newMessage.conversation_id
-                                        ? {
-                                            ...c,
-                                            unread_count: (c.unread_count || 0) + 1,
-                                            last_message: {
-                                                content: newMessage.content,
-                                                created_at: newMessage.created_at,
-                                                sender_id: newMessage.sender_id,
-                                            },
-                                        }
-                                        : c
-                                )
-                            );
-                        } else {
-                            setConversations(prev =>
-                                prev.map(c =>
-                                    c.id === newMessage.conversation_id
-                                        ? {
-                                            ...c,
-                                            last_message: {
-                                                content: newMessage.content,
-                                                created_at: newMessage.created_at,
-                                                sender_id: newMessage.sender_id,
-                                            },
-                                        }
-                                        : c
-                                )
-                            );
-                        }
-                    }
+                    const isActiveConv = activeConvRef.current?.id === newMessage.conversation_id;
+                    setConversations(prev => {
+                        // Check if this conversation belongs to us
+                        if (!prev.some(c => c.id === newMessage.conversation_id)) return prev;
+                        return prev.map(c =>
+                            c.id === newMessage.conversation_id
+                                ? {
+                                    ...c,
+                                    unread_count: isActiveConv ? c.unread_count : (c.unread_count || 0) + 1,
+                                    last_message: {
+                                        content: newMessage.content,
+                                        created_at: newMessage.created_at,
+                                        sender_id: newMessage.sender_id,
+                                    },
+                                }
+                                : c
+                        );
+                    });
                 }
             )
             .subscribe();
@@ -260,7 +235,7 @@ export function useDirectMessages(workspaceId: string | undefined) {
         return () => {
             supabase.removeChannel(subscription);
         };
-    }, [workspaceId, conversations, activeConversation, user]);
+    }, [workspaceId, user]);
 
     return {
         conversations,

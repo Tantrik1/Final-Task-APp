@@ -9,6 +9,7 @@ export interface SystemTemplateStatus {
     position: number;
     is_default?: boolean;
     is_completed?: boolean;
+    category?: 'todo' | 'active' | 'done' | 'cancelled';
 }
 
 export interface SystemTemplateField {
@@ -50,9 +51,9 @@ export const SYSTEM_TEMPLATES: SystemTemplate[] = [
         is_system: true,
         tasks: [],
         statuses: [
-            { name: 'To Do', color: '#94a3b8', position: 0, is_default: true },
-            { name: 'Doing', color: '#f97316', position: 1 },
-            { name: 'Done', color: '#22c55e', position: 2, is_completed: true },
+            { name: 'To Do', color: '#94a3b8', position: 0, is_default: true, category: 'todo' },
+            { name: 'Doing', color: '#f97316', position: 1, category: 'active' },
+            { name: 'Done', color: '#22c55e', position: 2, is_completed: true, category: 'done' },
         ],
         fields: [
             { name: 'Priority', field_type: 'select', options: ['Low', 'Medium', 'High'] },
@@ -71,13 +72,13 @@ export const SYSTEM_TEMPLATES: SystemTemplate[] = [
         is_system: true,
         tasks: [],
         statuses: [
-            { name: 'Ideation', color: '#94a3b8', position: 0, is_default: true },
-            { name: 'Content Planning', color: '#3b82f6', position: 1 },
-            { name: 'Content Creating', color: '#f97316', position: 2 },
-            { name: 'Content Approval', color: '#8b5cf6', position: 3 },
-            { name: 'Scheduled', color: '#14b8a6', position: 4 },
-            { name: 'Published', color: '#22c55e', position: 5, is_completed: true },
-            { name: 'Rework', color: '#ef4444', position: 6 },
+            { name: 'Ideation', color: '#94a3b8', position: 0, is_default: true, category: 'todo' },
+            { name: 'Content Planning', color: '#3b82f6', position: 1, category: 'todo' },
+            { name: 'Content Creating', color: '#f97316', position: 2, category: 'active' },
+            { name: 'Content Approval', color: '#8b5cf6', position: 3, category: 'active' },
+            { name: 'Scheduled', color: '#14b8a6', position: 4, category: 'active' },
+            { name: 'Published', color: '#22c55e', position: 5, is_completed: true, category: 'done' },
+            { name: 'Rework', color: '#ef4444', position: 6, category: 'active' },
         ],
         fields: [
             { name: 'Platform', field_type: 'multiselect', options: ['Facebook', 'Instagram', 'TikTok', 'Website', 'Email'] },
@@ -104,13 +105,13 @@ export const SYSTEM_TEMPLATES: SystemTemplate[] = [
         is_system: true,
         tasks: [],
         statuses: [
-            { name: 'Lead', color: '#94a3b8', position: 0, is_default: true },
-            { name: 'Contacted', color: '#3b82f6', position: 1 },
-            { name: 'Qualified', color: '#8b5cf6', position: 2 },
-            { name: 'Proposal Sent', color: '#f97316', position: 3 },
-            { name: 'Negotiation', color: '#eab308', position: 4 },
-            { name: 'Won', color: '#22c55e', position: 5, is_completed: true },
-            { name: 'Lost', color: '#ef4444', position: 6, is_completed: true },
+            { name: 'Lead', color: '#94a3b8', position: 0, is_default: true, category: 'todo' },
+            { name: 'Contacted', color: '#3b82f6', position: 1, category: 'active' },
+            { name: 'Qualified', color: '#8b5cf6', position: 2, category: 'active' },
+            { name: 'Proposal Sent', color: '#f97316', position: 3, category: 'active' },
+            { name: 'Negotiation', color: '#eab308', position: 4, category: 'active' },
+            { name: 'Won', color: '#22c55e', position: 5, is_completed: true, category: 'done' },
+            { name: 'Lost', color: '#ef4444', position: 6, is_completed: true, category: 'cancelled' },
         ],
         fields: [
             { name: 'Lead Source', field_type: 'select', options: ['Website', 'Referral', 'Cold Call', 'Event', 'LinkedIn', 'Other'] },
@@ -136,13 +137,13 @@ export const SYSTEM_TEMPLATES: SystemTemplate[] = [
         is_system: true,
         tasks: [],
         statuses: [
-            { name: 'Backlog', color: '#94a3b8', position: 0, is_default: true },
-            { name: 'Ready', color: '#3b82f6', position: 1 },
-            { name: 'In Progress', color: '#f97316', position: 2 },
-            { name: 'Code Review', color: '#8b5cf6', position: 3 },
-            { name: 'Testing', color: '#eab308', position: 4 },
-            { name: 'Deployment', color: '#14b8a6', position: 5 },
-            { name: 'Done', color: '#22c55e', position: 6, is_completed: true },
+            { name: 'Backlog', color: '#94a3b8', position: 0, is_default: true, category: 'todo' },
+            { name: 'Ready', color: '#3b82f6', position: 1, category: 'todo' },
+            { name: 'In Progress', color: '#f97316', position: 2, category: 'active' },
+            { name: 'Code Review', color: '#8b5cf6', position: 3, category: 'active' },
+            { name: 'Testing', color: '#eab308', position: 4, category: 'active' },
+            { name: 'Deployment', color: '#14b8a6', position: 5, category: 'active' },
+            { name: 'Done', color: '#22c55e', position: 6, is_completed: true, category: 'done' },
         ],
         fields: [
             { name: 'Module', field_type: 'text' },
@@ -167,12 +168,12 @@ export const SYSTEM_TEMPLATES: SystemTemplate[] = [
         is_system: true,
         tasks: [],
         statuses: [
-            { name: 'Reported', color: '#94a3b8', position: 0, is_default: true },
-            { name: 'Investigating', color: '#3b82f6', position: 1 },
-            { name: 'Working', color: '#f97316', position: 2 },
-            { name: 'Waiting for User', color: '#eab308', position: 3 },
-            { name: 'Resolved', color: '#22c55e', position: 4, is_completed: true },
-            { name: 'Closed', color: '#6b7280', position: 5, is_completed: true },
+            { name: 'Reported', color: '#94a3b8', position: 0, is_default: true, category: 'todo' },
+            { name: 'Investigating', color: '#3b82f6', position: 1, category: 'active' },
+            { name: 'Working', color: '#f97316', position: 2, category: 'active' },
+            { name: 'Waiting for User', color: '#eab308', position: 3, category: 'active' },
+            { name: 'Resolved', color: '#22c55e', position: 4, is_completed: true, category: 'done' },
+            { name: 'Closed', color: '#6b7280', position: 5, is_completed: true, category: 'cancelled' },
         ],
         fields: [
             { name: 'Severity', field_type: 'select', options: ['Critical', 'High', 'Medium', 'Low'] },
@@ -197,11 +198,11 @@ export const SYSTEM_TEMPLATES: SystemTemplate[] = [
         is_system: true,
         tasks: [],
         statuses: [
-            { name: 'Planned', color: '#94a3b8', position: 0, is_default: true },
-            { name: 'In Progress', color: '#f97316', position: 1 },
-            { name: 'Waiting', color: '#eab308', position: 2 },
-            { name: 'Completed', color: '#22c55e', position: 3, is_completed: true },
-            { name: 'Recurring', color: '#3b82f6', position: 4 },
+            { name: 'Planned', color: '#94a3b8', position: 0, is_default: true, category: 'todo' },
+            { name: 'In Progress', color: '#f97316', position: 1, category: 'active' },
+            { name: 'Waiting', color: '#eab308', position: 2, category: 'active' },
+            { name: 'Completed', color: '#22c55e', position: 3, is_completed: true, category: 'done' },
+            { name: 'Recurring', color: '#3b82f6', position: 4, category: 'active' },
         ],
         fields: [
             { name: 'Department', field_type: 'select', options: ['HR', 'Finance', 'IT', 'Marketing', 'Sales', 'Operations'] },
@@ -225,11 +226,11 @@ export const SYSTEM_TEMPLATES: SystemTemplate[] = [
         is_system: true,
         tasks: [],
         statuses: [
-            { name: 'Recorded', color: '#94a3b8', position: 0, is_default: true },
-            { name: 'Verification', color: '#3b82f6', position: 1 },
-            { name: 'Approved', color: '#8b5cf6', position: 2 },
-            { name: 'Paid', color: '#22c55e', position: 3, is_completed: true },
-            { name: 'Archived', color: '#6b7280', position: 4, is_completed: true },
+            { name: 'Recorded', color: '#94a3b8', position: 0, is_default: true, category: 'todo' },
+            { name: 'Verification', color: '#3b82f6', position: 1, category: 'active' },
+            { name: 'Approved', color: '#8b5cf6', position: 2, category: 'active' },
+            { name: 'Paid', color: '#22c55e', position: 3, is_completed: true, category: 'done' },
+            { name: 'Archived', color: '#6b7280', position: 4, is_completed: true, category: 'cancelled' },
         ],
         fields: [
             { name: 'Expense Type', field_type: 'select', options: ['Travel', 'Software', 'Hardware', 'Marketing', 'Payroll', 'Office', 'Other'] },
@@ -255,11 +256,11 @@ export const SYSTEM_TEMPLATES: SystemTemplate[] = [
         is_system: true,
         tasks: [],
         statuses: [
-            { name: 'Planned', color: '#94a3b8', position: 0, is_default: true },
-            { name: 'In Progress', color: '#f97316', position: 1 },
-            { name: 'Blocked', color: '#ef4444', position: 2 },
-            { name: 'Review', color: '#8b5cf6', position: 3 },
-            { name: 'Completed', color: '#22c55e', position: 4, is_completed: true },
+            { name: 'Planned', color: '#94a3b8', position: 0, is_default: true, category: 'todo' },
+            { name: 'In Progress', color: '#f97316', position: 1, category: 'active' },
+            { name: 'Blocked', color: '#ef4444', position: 2, category: 'active' },
+            { name: 'Review', color: '#8b5cf6', position: 3, category: 'active' },
+            { name: 'Completed', color: '#22c55e', position: 4, is_completed: true, category: 'done' },
         ],
         fields: [
             { name: 'Phase', field_type: 'select', options: ['Planning', 'Execution', 'Monitoring', 'Closure'] },

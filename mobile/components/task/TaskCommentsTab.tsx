@@ -24,6 +24,7 @@ import {
 } from 'lucide-react-native';
 import { formatDistanceToNow } from 'date-fns';
 import { supabase } from '@/lib/supabase';
+import { useTheme } from '@/contexts/ThemeContext';
 
 interface Comment {
   id: string;
@@ -64,6 +65,7 @@ const useResponsive = () => {
 export function TaskCommentsTab({ taskId, userId, comments, onRefresh }: TaskCommentsTabProps) {
   const insets = useSafeAreaInsets();
   const responsive = useResponsive();
+  const { colors } = useTheme();
 
   const [newComment, setNewComment] = useState('');
   const [replyingTo, setReplyingTo] = useState<string | null>(null);
@@ -192,35 +194,35 @@ export function TaskCommentsTab({ taskId, userId, comments, onRefresh }: TaskCom
       : comment.user?.email?.[0]?.toUpperCase() || 'U';
 
     return (
-      <View key={comment.id} style={[isReply && styles.replyIndent]}>
+      <View key={comment.id} style={[isReply && [styles.replyIndent, { borderLeftColor: colors.border }]]}>
         <View style={styles.commentRow}>
-          <View style={[styles.avatar, isReply && styles.avatarSmall]}>
-            <Text style={[styles.avatarText, isReply && { fontSize: 9 }]}>{initials}</Text>
+          <View style={[styles.avatar, { backgroundColor: colors.surface }, isReply && styles.avatarSmall]}>
+            <Text style={[styles.avatarText, { color: colors.textSecondary }, isReply && { fontSize: 9 }]}>{initials}</Text>
           </View>
           <View style={{ flex: 1 }}>
             <View style={styles.commentHeader}>
-              <Text style={styles.authorName}>
+              <Text style={[styles.authorName, { color: colors.text }]}>
                 {comment.user?.full_name || comment.user?.email?.split('@')[0] || 'User'}
               </Text>
-              <Text style={styles.timeText}>
+              <Text style={[styles.timeText, { color: colors.textTertiary }]}>
                 {formatDistanceToNow(new Date(comment.created_at), { addSuffix: true })}
               </Text>
             </View>
-            <Text style={styles.commentBody}>{comment.content}</Text>
+            <Text style={[styles.commentBody, { color: colors.text }]}>{comment.content}</Text>
             <View style={styles.actions}>
               {!isReply && (
                 <TouchableOpacity
                   style={styles.actionBtn}
                   onPress={() => setReplyingTo(replyingTo === comment.id ? null : comment.id)}
                 >
-                  <Reply size={12} color={replyingTo === comment.id ? '#F97316' : '#94A3B8'} />
-                  <Text style={[styles.actionText, replyingTo === comment.id && { color: '#F97316' }]}>Reply</Text>
+                  <Reply size={12} color={replyingTo === comment.id ? colors.primary : colors.textTertiary} />
+                  <Text style={[styles.actionText, { color: colors.textTertiary }, replyingTo === comment.id && { color: colors.primary }]}>Reply</Text>
                 </TouchableOpacity>
               )}
               {hasReplies && (
                 <TouchableOpacity style={styles.actionBtn} onPress={() => toggleReplies(comment.id)}>
-                  {isExpanded ? <ChevronUp size={12} color="#94A3B8" /> : <ChevronDown size={12} color="#94A3B8" />}
-                  <Text style={styles.actionText}>
+                  {isExpanded ? <ChevronUp size={12} color={colors.textTertiary} /> : <ChevronDown size={12} color={colors.textTertiary} />}
+                  <Text style={[styles.actionText, { color: colors.textTertiary }]}>
                     {comment.replies?.length} {comment.replies?.length === 1 ? 'reply' : 'replies'}
                   </Text>
                 </TouchableOpacity>
@@ -235,11 +237,11 @@ export function TaskCommentsTab({ taskId, userId, comments, onRefresh }: TaskCom
             {/* Reply input */}
             {replyingTo === comment.id && (
               <View style={styles.replyInputRow}>
-                <CornerDownRight size={14} color="#CBD5E1" />
+                <CornerDownRight size={14} color={colors.textTertiary} />
                 <TextInput
-                  style={styles.replyInput}
+                  style={[styles.replyInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.surface }]}
                   placeholder="Write a reply..."
-                  placeholderTextColor="#CBD5E1"
+                  placeholderTextColor={colors.textTertiary}
                   value={replyContent}
                   onChangeText={setReplyContent}
                   multiline
@@ -271,9 +273,9 @@ export function TaskCommentsTab({ taskId, userId, comments, onRefresh }: TaskCom
       >
         {comments.length === 0 ? (
           <View style={styles.empty}>
-            <MessageCircle size={36} color="#E2E8F0" />
-            <Text style={styles.emptyTitle}>No comments yet</Text>
-            <Text style={styles.emptySub}>Be the first to start the conversation</Text>
+            <MessageCircle size={36} color={colors.textTertiary} />
+            <Text style={[styles.emptyTitle, { color: colors.textTertiary }]}>No comments yet</Text>
+            <Text style={[styles.emptySub, { color: colors.textTertiary }]}>Be the first to start the conversation</Text>
           </View>
         ) : (
           comments.map(c => renderComment(c))
@@ -286,6 +288,8 @@ export function TaskCommentsTab({ taskId, userId, comments, onRefresh }: TaskCom
         {
           paddingBottom: keyboardVisible ? 6 : Math.max(insets.bottom, 6),
           paddingHorizontal: responsive.containerPaddingH,
+          backgroundColor: colors.card,
+          borderTopColor: colors.border,
         },
       ]}>
         <View style={[
@@ -293,6 +297,8 @@ export function TaskCommentsTab({ taskId, userId, comments, onRefresh }: TaskCom
           {
             borderRadius: responsive.inputBorderRadius,
             minHeight: responsive.inputMinHeight,
+            borderColor: colors.border,
+            backgroundColor: colors.surface,
           },
         ]}>
           <Animated.View style={{ flex: 1, height: inputHeight }}>
@@ -302,10 +308,11 @@ export function TaskCommentsTab({ taskId, userId, comments, onRefresh }: TaskCom
                 {
                   fontSize: responsive.inputFontSize,
                   maxHeight: responsive.inputMaxHeight,
+                  color: colors.text,
                 },
               ]}
               placeholder="Write a comment..."
-              placeholderTextColor="#94A3B8"
+              placeholderTextColor={colors.textTertiary}
               value={newComment}
               onChangeText={setNewComment}
               onContentSizeChange={handleContentSizeChange}
@@ -330,6 +337,7 @@ export function TaskCommentsTab({ taskId, userId, comments, onRefresh }: TaskCom
                 width: responsive.sendBtnSize,
                 height: responsive.sendBtnSize,
                 borderRadius: responsive.sendBtnSize / 2,
+                backgroundColor: colors.primary,
               },
               (!newComment.trim() || isSubmitting) && styles.sendBtnDisabled,
             ]}

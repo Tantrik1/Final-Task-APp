@@ -22,6 +22,7 @@ import {
   User,
 } from 'lucide-react-native';
 import { supabase } from '@/lib/supabase';
+import { useTheme } from '@/contexts/ThemeContext';
 
 interface Member {
   id: string;
@@ -93,6 +94,7 @@ function SwipableChip({ name, initials, color, onRemove }: { name: string; initi
 }
 
 export const AssigneeSelector = forwardRef<AssigneeSelectorHandle, AssigneeSelectorProps>(({ taskId, userId, assignees, members, onRefresh, showInlineList = true }, ref) => {
+  const { colors } = useTheme();
   const [showPicker, setShowPicker] = useState(false);
   const [search, setSearch] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -195,10 +197,10 @@ export const AssigneeSelector = forwardRef<AssigneeSelectorHandle, AssigneeSelec
   };
 
   const getColor = (str: string) => {
-    const colors = ['#3B82F6', '#8B5CF6', '#EC4899', '#F97316', '#22C55E', '#14B8A6', '#EF4444', '#6366F1'];
+    const palette = ['#3B82F6', '#8B5CF6', '#EC4899', '#F97316', '#22C55E', '#14B8A6', '#EF4444', '#6366F1'];
     let hash = 0;
     for (let i = 0; i < str.length; i++) hash = str.charCodeAt(i) + ((hash << 5) - hash);
-    return colors[Math.abs(hash) % colors.length];
+    return palette[Math.abs(hash) % palette.length];
   };
 
   return (
@@ -207,7 +209,7 @@ export const AssigneeSelector = forwardRef<AssigneeSelectorHandle, AssigneeSelec
       {showInlineList && (
         <View style={styles.container}>
           <View style={styles.labelRow}>
-            <Text style={styles.label}>Assignees</Text>
+            <Text style={[styles.label, { color: colors.textSecondary }]}>Assignees</Text>
             {assignees.length > 1 && (
               <TouchableOpacity style={styles.clearAllBtn} onPress={handleClearAll}>
                 <Trash2 size={11} color="#EF4444" />
@@ -216,9 +218,9 @@ export const AssigneeSelector = forwardRef<AssigneeSelectorHandle, AssigneeSelec
             )}
           </View>
           {assignees.length === 0 ? (
-            <TouchableOpacity style={styles.addBtn} onPress={() => setShowPicker(true)}>
-              <UserPlus size={14} color="#94A3B8" />
-              <Text style={styles.addBtnText}>Add assignee</Text>
+            <TouchableOpacity style={[styles.addBtn, { borderColor: colors.border }]} onPress={() => setShowPicker(true)}>
+              <UserPlus size={14} color={colors.textTertiary} />
+              <Text style={[styles.addBtnText, { color: colors.textTertiary }]}>Add assignee</Text>
             </TouchableOpacity>
           ) : (
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipsScroll}>
@@ -236,8 +238,8 @@ export const AssigneeSelector = forwardRef<AssigneeSelectorHandle, AssigneeSelec
                   />
                 );
               })}
-              <TouchableOpacity style={styles.addChip} onPress={() => setShowPicker(true)}>
-                <UserPlus size={13} color="#F97316" />
+              <TouchableOpacity style={[styles.addChip, { borderColor: colors.primary + '40', backgroundColor: colors.primary + '10' }]} onPress={() => setShowPicker(true)}>
+                <UserPlus size={13} color={colors.primary} />
               </TouchableOpacity>
             </ScrollView>
           )}
@@ -247,41 +249,41 @@ export const AssigneeSelector = forwardRef<AssigneeSelectorHandle, AssigneeSelec
       {/* Picker Modal */}
       <Modal visible={showPicker} transparent animationType="slide" onRequestClose={() => setShowPicker(false)}>
         <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={() => setShowPicker(false)}>
-          <TouchableOpacity style={styles.sheet} activeOpacity={1} onPress={() => { }}>
-            <View style={styles.handle} />
+          <TouchableOpacity style={[styles.sheet, { backgroundColor: colors.card }]} activeOpacity={1} onPress={() => { }}>
+            <View style={[styles.handle, { backgroundColor: colors.border }]} />
 
             {/* Header */}
             <View style={styles.sheetHeader}>
-              <Text style={styles.sheetTitle}>Select Assignees</Text>
+              <Text style={[styles.sheetTitle, { color: colors.text }]}>Select Assignees</Text>
               <TouchableOpacity onPress={() => setShowPicker(false)} style={styles.closeBtn}>
-                <X size={20} color="#64748B" />
+                <X size={20} color={colors.textSecondary} />
               </TouchableOpacity>
             </View>
 
             {/* Search */}
-            <View style={styles.searchRow}>
-              <Search size={16} color="#94A3B8" />
+            <View style={[styles.searchRow, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <Search size={16} color={colors.textTertiary} />
               <TextInput
-                style={styles.searchInput}
+                style={[styles.searchInput, { color: colors.text }]}
                 placeholder="Search members..."
-                placeholderTextColor="#94A3B8"
+                placeholderTextColor={colors.textTertiary}
                 value={search}
                 onChangeText={setSearch}
                 autoCapitalize="none"
               />
               {search.length > 0 && (
                 <TouchableOpacity onPress={() => setSearch('')}>
-                  <X size={16} color="#94A3B8" />
+                  <X size={16} color={colors.textTertiary} />
                 </TouchableOpacity>
               )}
             </View>
 
             {/* Assign to me shortcut */}
             {!assignedUserIds.has(userId) && (
-              <TouchableOpacity style={styles.assignMeBtn} onPress={() => handleAdd(userId)}>
-                <User size={16} color="#F97316" />
-                <Text style={styles.assignMeText}>Assign to me</Text>
-                {isLoading && <ActivityIndicator size="small" color="#F97316" style={{ marginLeft: 8 }} />}
+              <TouchableOpacity style={[styles.assignMeBtn, { backgroundColor: colors.primary + '10' }]} onPress={() => handleAdd(userId)}>
+                <User size={16} color={colors.primary} />
+                <Text style={[styles.assignMeText, { color: colors.primary }]}>Assign to me</Text>
+                {isLoading && <ActivityIndicator size="small" color={colors.primary} style={{ marginLeft: 8 }} />}
               </TouchableOpacity>
             )}
 
@@ -296,31 +298,31 @@ export const AssigneeSelector = forwardRef<AssigneeSelectorHandle, AssigneeSelec
                 return (
                   <TouchableOpacity
                     key={member.id}
-                    style={[styles.memberRow, isAssigned && styles.memberRowActive]}
+                    style={[styles.memberRow, isAssigned && { backgroundColor: colors.primary + '10' }]}
                     onPress={() => handleToggle(member)}
                   >
                     <View style={[styles.memberAvatar, { backgroundColor: color + '20' }]}>
                       <Text style={[styles.memberAvatarText, { color }]}>{initials}</Text>
                     </View>
                     <View style={{ flex: 1 }}>
-                      <Text style={[styles.memberName, isAssigned && { color: '#F97316', fontWeight: '700' }]}>{name}</Text>
-                      <Text style={styles.memberEmail}>{member.email}</Text>
+                      <Text style={[styles.memberName, { color: colors.text }, isAssigned && { color: colors.primary, fontWeight: '700' }]}>{name}</Text>
+                      <Text style={[styles.memberEmail, { color: colors.textTertiary }]}>{member.email}</Text>
                     </View>
-                    <View style={[styles.checkBox, isAssigned && styles.checkBoxActive]}>
+                    <View style={[styles.checkBox, { borderColor: colors.border }, isAssigned && { backgroundColor: colors.primary, borderColor: colors.primary }]}>
                       {isAssigned && <Check size={14} color="#FFF" />}
                     </View>
                   </TouchableOpacity>
                 );
               })}
               {filteredMembers.length === 0 && (
-                <Text style={styles.noResults}>No members found</Text>
+                <Text style={[styles.noResults, { color: colors.textTertiary }]}>No members found</Text>
               )}
             </ScrollView>
 
             {/* Footer */}
-            <View style={styles.sheetFooter}>
-              <Text style={styles.footerCount}>{assignees.length} assigned</Text>
-              <TouchableOpacity style={styles.doneBtn} onPress={() => setShowPicker(false)}>
+            <View style={[styles.sheetFooter, { borderTopColor: colors.border }]}>
+              <Text style={[styles.footerCount, { color: colors.textTertiary }]}>{assignees.length} assigned</Text>
+              <TouchableOpacity style={[styles.doneBtn, { backgroundColor: colors.primary }]} onPress={() => setShowPicker(false)}>
                 <Text style={styles.doneBtnText}>Done</Text>
               </TouchableOpacity>
             </View>

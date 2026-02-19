@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { Alert } from 'react-native';
 import { supabase } from '@/lib/supabase';
 
+export type StatusCategory = 'todo' | 'active' | 'done' | 'cancelled';
+
 export interface ProjectStatus {
     id: string;
     project_id: string;
@@ -10,6 +12,7 @@ export interface ProjectStatus {
     position: number;
     is_default: boolean;
     is_completed: boolean;
+    category: StatusCategory;
     created_at: string;
     updated_at: string;
 }
@@ -66,11 +69,14 @@ export function useProjectStatuses(projectId: string | undefined) {
         };
     }, [projectId, fetchStatuses]);
 
-    const createStatus = async (data: { name: string; color: string; is_completed?: boolean }) => {
+    const createStatus = async (data: { name: string; color: string; is_completed?: boolean; category?: StatusCategory }) => {
         if (!projectId) return null;
 
         try {
             const maxPosition = Math.max(...statuses.map(s => s.position), -1);
+
+            // Derive category from is_completed if not explicitly provided
+            const category = data.category || (data.is_completed ? 'done' : 'active');
 
             const { data: newStatus, error } = await supabase
                 .from('project_statuses')
@@ -79,6 +85,7 @@ export function useProjectStatuses(projectId: string | undefined) {
                     name: data.name,
                     color: data.color,
                     is_completed: data.is_completed || false,
+                    category,
                     position: maxPosition + 1,
                 })
                 .select()
@@ -93,11 +100,17 @@ export function useProjectStatuses(projectId: string | undefined) {
         }
     };
 
-    const updateStatus = async (id: string, data: Partial<Pick<ProjectStatus, 'name' | 'color' | 'is_completed' | 'is_default'>>) => {
+    const updateStatus = async (id: string, data: Partial<Pick<ProjectStatus, 'name' | 'color' | 'is_completed' | 'is_default' | 'category'>>) => {
         try {
+            const updateData = { ...data } as any;
+            // Auto-derive is_completed and is_default from category if category is being changed
+            if (updateData.category) {
+                updateData.is_completed = updateData.category === 'done' || updateData.category === 'cancelled';
+                updateData.is_default = updateData.category === 'todo';
+            }
             const { error } = await supabase
                 .from('project_statuses')
-                .update(data)
+                .update(updateData)
                 .eq('id', id);
 
             if (error) throw error;

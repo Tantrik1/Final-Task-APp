@@ -7,7 +7,7 @@ import { format } from 'date-fns';
 interface Task {
     id: string;
     title: string;
-    status: 'todo' | 'in_progress' | 'done' | 'backlog';
+    status: 'todo' | 'in_progress' | 'done';
     priority: 'low' | 'medium' | 'high' | 'urgent';
     due_date?: string | null;
     assignee?: {

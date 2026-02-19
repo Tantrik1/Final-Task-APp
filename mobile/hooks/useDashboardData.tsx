@@ -165,22 +165,23 @@ export function useDashboardData() {
             // 2. Fetch statuses
             const { data: allStatuses } = await supabase
                 .from('project_statuses')
-                .select('id, project_id, name, is_completed, is_default')
+                .select('id, project_id, name, is_completed, is_default, category')
                 .in('project_id', projectIds.length > 0 ? projectIds : ['__none__']);
 
-            const completedStatusMap = new Map<string, Set<string>>();
+            const completedStatusIds = new Set<string>();
             const statusIdNameMap = new Map<string, string>();
 
             allStatuses?.forEach(s => {
                 statusIdNameMap.set(s.id, s.name);
-                if (s.is_completed) {
-                    if (!completedStatusMap.has(s.project_id)) completedStatusMap.set(s.project_id, new Set());
-                    completedStatusMap.get(s.project_id)!.add(s.name);
-                }
+                if (s.category === 'done' || s.category === 'cancelled' || s.is_completed) completedStatusIds.add(s.id);
             });
 
-            const isTaskDone = (projectId: string, status: string) =>
-                completedStatusMap.get(projectId)?.has(status) || status.toLowerCase() === 'done';
+            // custom_status_id is the single source of truth.
+            // status enum is only a fallback for legacy tasks without custom_status_id.
+            const isTaskDone = (task: any) =>
+                task.custom_status_id
+                    ? completedStatusIds.has(task.custom_status_id)
+                    : task.status === 'done';
 
             // 3. Members
             const { data: members } = await supabase
@@ -239,7 +240,7 @@ export function useDashboardData() {
             const stuckList: StuckTask[] = [];
 
             allTasks.forEach(t => {
-                const done = isTaskDone(t.project_id, t.status);
+                const done = isTaskDone(t);
                 if (done) {
                     completedCount++;
                 } else {
@@ -278,7 +279,7 @@ export function useDashboardData() {
             });
 
             // Completion rate
-            const withRate = allTasks.filter(t => t.due_date && t.completed_at && isTaskDone(t.project_id, t.status));
+            const withRate = allTasks.filter(t => t.due_date && t.completed_at && isTaskDone(t));
             let rate = 0;
             if (withRate.length > 0) {
                 const onTime = withRate.filter(t => new Date(t.completed_at) <= new Date(t.due_date)).length;
@@ -325,7 +326,7 @@ export function useDashboardData() {
 
             // My Tasks (for member + admin)
             const myTasksList = allTasks
-                .filter(t => t.assigned_to === user.id && !isTaskDone(t.project_id, t.status))
+                .filter(t => t.assigned_to === user.id && !isTaskDone(t))
                 .map(t => ({ ...t, project: projectMap.get(t.project_id) }))
                 .sort((a, b) => {
                     // Overdue first, then due today, then by date
@@ -342,7 +343,7 @@ export function useDashboardData() {
                     t.assigned_to === user.id &&
                     t.created_at &&
                     differenceInDays(today, new Date(t.created_at)) <= 7 &&
-                    !isTaskDone(t.project_id, t.status)
+                    !isTaskDone(t)
                 )
                 .map(t => ({ ...t, project: projectMap.get(t.project_id) }))
                 .sort((a, b) => new Date(b.created_at!).getTime() - new Date(a.created_at!).getTime())
@@ -351,7 +352,7 @@ export function useDashboardData() {
 
             // Recently Completed
             const recentDone = allTasks
-                .filter(t => isTaskDone(t.project_id, t.status) && t.completed_at)
+                .filter(t => isTaskDone(t) && t.completed_at)
                 .map(t => ({ ...t, project: projectMap.get(t.project_id) }))
                 .sort((a, b) => new Date(b.completed_at!).getTime() - new Date(a.completed_at!).getTime())
                 .slice(0, 5);
@@ -359,7 +360,7 @@ export function useDashboardData() {
 
             // Upcoming tasks (next deadlines)
             const upcoming = allTasks
-                .filter(t => !isTaskDone(t.project_id, t.status) && t.due_date && t.due_date >= todayStr)
+                .filter(t => !isTaskDone(t) && t.due_date && t.due_date >= todayStr)
                 .sort((a, b) => new Date(a.due_date!).getTime() - new Date(b.due_date!).getTime())
                 .slice(0, 5)
                 .map(t => ({ ...t, project: projectMap.get(t.project_id) }));
@@ -424,7 +425,7 @@ export function useDashboardData() {
                     id: mid,
                     name: profileMap.get(mid)?.full_name || 'User',
                     avatar: profileMap.get(mid)?.avatar_url,
-                    completedTasks: ut.filter(t => isTaskDone(t.project_id, t.status)).length,
+                    completedTasks: ut.filter(t => isTaskDone(t)).length,
                     totalTasks: ut.length,
                 };
             }).sort((a, b) => b.completedTasks - a.completedTasks).slice(0, 5));
@@ -435,7 +436,7 @@ export function useDashboardData() {
                     id: mid,
                     name: profileMap.get(mid)?.full_name || 'User',
                     avatar: profileMap.get(mid)?.avatar_url,
-                    activeTasks: ut.filter(t => !isTaskDone(t.project_id, t.status)).length,
+                    activeTasks: ut.filter(t => !isTaskDone(t)).length,
                     totalTasks: ut.length,
                 };
             }).sort((a, b) => b.activeTasks - a.activeTasks));
@@ -449,8 +450,8 @@ export function useDashboardData() {
                         name: profileMap.get(mid)?.full_name || profileMap.get(mid)?.email?.split('@')[0] || 'User',
                         avatar: profileMap.get(mid)?.avatar_url,
                         role: memberRoleMap.get(mid) || 'member',
-                        activeTasks: ut.filter(t => !isTaskDone(t.project_id, t.status)).length,
-                        completedTasks: ut.filter(t => isTaskDone(t.project_id, t.status)).length,
+                        activeTasks: ut.filter(t => !isTaskDone(t)).length,
+                        completedTasks: ut.filter(t => isTaskDone(t)).length,
                         hoursThisWeek: Math.round((myHoursThisWeek[mid] || 0) * 10) / 10,
                     };
                 }).sort((a, b) => b.activeTasks - a.activeTasks));
@@ -462,7 +463,7 @@ export function useDashboardData() {
                 return {
                     id: p.id, name: p.name, color: p.color || '#6366f1',
                     totalTasks: pt.length,
-                    completedTasks: pt.filter(t => isTaskDone(t.project_id, t.status)).length,
+                    completedTasks: pt.filter(t => isTaskDone(t)).length,
                 };
             }) || []);
 

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
     View,
     Text,
@@ -20,6 +20,7 @@ import {
 } from 'lucide-react-native';
 import { format, isPast, isToday } from 'date-fns';
 import Animated, { FadeInDown, FadeIn, Layout } from 'react-native-reanimated';
+import { useTheme } from '@/contexts/ThemeContext';
 
 interface Task {
     id: string;
@@ -40,6 +41,7 @@ interface Status {
     position: number;
     is_default: boolean;
     is_completed: boolean;
+    category?: 'todo' | 'active' | 'done' | 'cancelled';
 }
 
 interface ListViewProps {
@@ -61,6 +63,7 @@ const PRIORITY_CONFIG: Record<string, { color: string; bg: string; label: string
 
 export default function ListView({ tasks, statuses, onToggleComplete, projectId }: ListViewProps) {
     const router = useRouter();
+    const { colors } = useTheme();
     const [searchQuery, setSearchQuery] = useState('');
     const [sortBy, setSortBy] = useState<SortOption>('status');
     const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
@@ -103,7 +106,7 @@ export default function ListView({ tasks, statuses, onToggleComplete, projectId 
                     label: status.name,
                     color: status.color,
                     tasks: statusTasks,
-                    isCompleted: status.is_completed,
+                    isCompleted: status.category === 'done' || status.category === 'cancelled' || status.is_completed,
                 });
             }
         } else if (sortBy === 'priority') {
@@ -144,6 +147,19 @@ export default function ListView({ tasks, statuses, onToggleComplete, projectId 
         return groups;
     }, [filteredTasks, statuses, sortBy]);
 
+    useEffect(() => {
+        const emptyKeys = groupedTasks
+            .filter(g => g.tasks.length === 0)
+            .map(g => g.key);
+        if (emptyKeys.length > 0) {
+            setCollapsedGroups(prev => {
+                const next = new Set(prev);
+                emptyKeys.forEach(k => next.add(k));
+                return next;
+            });
+        }
+    }, [groupedTasks]);
+
     const renderTaskRow = (task: Task, index: number) => {
         const priority = PRIORITY_CONFIG[task.priority] || PRIORITY_CONFIG.medium;
         const status = task.custom_status_id
@@ -160,15 +176,14 @@ export default function ListView({ tasks, statuses, onToggleComplete, projectId 
                 layout={Layout.springify()}
             >
                 <TouchableOpacity
-                    style={[styles.taskRow, isCompleted && styles.taskRowCompleted]}
+                    style={[styles.taskRow, { backgroundColor: colors.card, borderColor: colors.border }, isCompleted && styles.taskRowCompleted]}
                     onPress={() => router.push(`/task/${task.id}` as any)}
                     activeOpacity={0.6}
                 >
 
-
                     {/* Content */}
                     <View style={styles.taskContent}>
-                        <Text style={[styles.taskTitle, isCompleted && styles.taskTitleDone]} numberOfLines={1}>
+                        <Text style={[styles.taskTitle, { color: colors.text }, isCompleted && styles.taskTitleDone]} numberOfLines={1}>
                             {task.title}
                         </Text>
                         <View style={styles.taskMeta}>
@@ -201,8 +216,8 @@ export default function ListView({ tasks, statuses, onToggleComplete, projectId 
 
                     {/* Assignee */}
                     {task.assignee && (
-                        <View style={styles.avatar}>
-                            <Text style={styles.avatarText}>
+                        <View style={[styles.avatar, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                            <Text style={[styles.avatarText, { color: colors.textSecondary }]}>
                                 {task.assignee.full_name?.charAt(0)?.toUpperCase() || '?'}
                             </Text>
                         </View>
@@ -223,36 +238,36 @@ export default function ListView({ tasks, statuses, onToggleComplete, projectId 
         <View style={styles.container}>
             {/* Search + Sort bar */}
             <View style={styles.toolbar}>
-                <View style={styles.searchBar}>
-                    <Search size={16} color="#94A3B8" />
+                <View style={[styles.searchBar, { backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1 }]}>
+                    <Search size={16} color={colors.textTertiary} />
                     <TextInput
-                        style={styles.searchInput}
+                        style={[styles.searchInput, { color: colors.text }]}
                         placeholder="Search tasks..."
-                        placeholderTextColor="#94A3B8"
+                        placeholderTextColor={colors.textTertiary}
                         value={searchQuery}
                         onChangeText={setSearchQuery}
                     />
                 </View>
                 <TouchableOpacity
-                    style={[styles.sortBtn, showSortMenu && styles.sortBtnActive]}
+                    style={[styles.sortBtn, { backgroundColor: colors.surface }, showSortMenu && { backgroundColor: colors.primary }]}
                     onPress={() => setShowSortMenu(!showSortMenu)}
                 >
-                    <SlidersHorizontal size={16} color={showSortMenu ? '#FFF' : '#64748B'} />
+                    <SlidersHorizontal size={16} color={showSortMenu ? '#FFF' : colors.textSecondary} />
                 </TouchableOpacity>
             </View>
 
             {/* Sort options */}
             {showSortMenu && (
-                <Animated.View entering={FadeIn.duration(200)} style={styles.sortMenu}>
-                    <Text style={styles.sortMenuLabel}>Group by</Text>
+                <Animated.View entering={FadeIn.duration(200)} style={[styles.sortMenu, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                    <Text style={[styles.sortMenuLabel, { color: colors.textTertiary }]}>Group by</Text>
                     <View style={styles.sortOptions}>
                         {SORT_OPTIONS.map(opt => (
                             <TouchableOpacity
                                 key={opt.key}
-                                style={[styles.sortOption, sortBy === opt.key && styles.sortOptionActive]}
+                                style={[styles.sortOption, { backgroundColor: colors.surface, borderColor: colors.border }, sortBy === opt.key && { backgroundColor: colors.primary, borderColor: colors.primary }]}
                                 onPress={() => { setSortBy(opt.key); setShowSortMenu(false); }}
                             >
-                                <Text style={[styles.sortOptionText, sortBy === opt.key && styles.sortOptionTextActive]}>
+                                <Text style={[styles.sortOptionText, { color: colors.textSecondary }, sortBy === opt.key && { color: '#FFF' }]}>
                                     {opt.label}
                                 </Text>
                             </TouchableOpacity>
@@ -280,7 +295,7 @@ export default function ListView({ tasks, statuses, onToggleComplete, projectId 
                             >
                                 <View style={styles.groupHeaderLeft}>
                                     <View style={[styles.groupDot, { backgroundColor: group.color }]} />
-                                    <Text style={styles.groupTitle}>{group.label}</Text>
+                                    <Text style={[styles.groupTitle, { color: colors.text }]}>{group.label}</Text>
                                     <View style={[styles.groupCount, { backgroundColor: group.color + '15' }]}>
                                         <Text style={[styles.groupCountText, { color: group.color }]}>
                                             {group.tasks.length}
@@ -288,9 +303,9 @@ export default function ListView({ tasks, statuses, onToggleComplete, projectId 
                                     </View>
                                 </View>
                                 {isCollapsed ? (
-                                    <ChevronRight size={16} color="#94A3B8" />
+                                    <ChevronRight size={16} color={colors.textTertiary} />
                                 ) : (
-                                    <ChevronDown size={16} color="#94A3B8" />
+                                    <ChevronDown size={16} color={colors.textTertiary} />
                                 )}
                             </TouchableOpacity>
 
@@ -299,7 +314,7 @@ export default function ListView({ tasks, statuses, onToggleComplete, projectId 
                                 <View style={styles.groupTasks}>
                                     {group.tasks.length === 0 ? (
                                         <View style={styles.emptyGroup}>
-                                            <Text style={styles.emptyGroupText}>No tasks</Text>
+                                            <Text style={[styles.emptyGroupText, { color: colors.textTertiary }]}>No tasks</Text>
                                         </View>
                                     ) : (
                                         group.tasks.map((task, idx) => renderTaskRow(task, idx))
@@ -312,8 +327,8 @@ export default function ListView({ tasks, statuses, onToggleComplete, projectId 
 
                 {filteredTasks.length === 0 && searchQuery.trim() && (
                     <View style={styles.noResults}>
-                        <Search size={32} color="#CBD5E1" />
-                        <Text style={styles.noResultsText}>No tasks match "{searchQuery}"</Text>
+                        <Search size={32} color={colors.textTertiary} />
+                        <Text style={[styles.noResultsText, { color: colors.textSecondary }]}>No tasks match "{searchQuery}"</Text>
                     </View>
                 )}
             </ScrollView>

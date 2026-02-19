@@ -15,11 +15,10 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
+import { ProjectsSkeleton } from '@/components/ui/Skeleton';
 import {
     Plus,
     FolderKanban,
-    MoreVertical,
-    Archive,
     Trash2,
     CheckSquare,
     Search,
@@ -27,17 +26,29 @@ import {
     LayoutTemplate,
     X,
     Settings,
-    GripVertical,
-    ChevronUp,
-    ChevronDown
+    ChevronDown,
+    Archive,
+    MoreVertical,
+    Clock,
+    Users,
+    Rocket,
 } from 'lucide-react-native';
 import { supabase } from '@/lib/supabase';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { useAuth } from '@/hooks/useAuth';
+import { useTheme } from '@/contexts/ThemeContext';
 import { SYSTEM_TEMPLATES, SystemTemplate } from '@/constants/systemTemplates';
 import { useProjectTemplates, ProjectTemplate } from '@/hooks/useProjectTemplates';
 
 const { width } = Dimensions.get('window');
+const HORIZONTAL_PAD = 20;
+
+const CATEGORY_CONFIG = {
+    todo:      { color: '#3B82F6', bg: '#EFF6FF', label: 'Todo',      short: 'TODO' },
+    active:    { color: '#F97316', bg: '#FFF7ED', label: 'Active',    short: 'ACT' },
+    done:      { color: '#22C55E', bg: '#F0FDF4', label: 'Done',      short: 'DONE' },
+    cancelled: { color: '#EF4444', bg: '#FEF2F2', label: 'Cancelled', short: 'CXL' },
+} as const;
 
 interface Project {
     id: string;
@@ -52,13 +63,12 @@ interface Project {
     };
 }
 
-// ... imports done 
-
 export default function Projects() {
     const insets = useSafeAreaInsets();
     const router = useRouter();
     const { currentWorkspace, isLoading: workspaceLoading } = useWorkspace();
     const { user } = useAuth();
+    const { colors } = useTheme();
 
     const [projects, setProjects] = useState<Project[]>([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -81,6 +91,7 @@ export default function Projects() {
     const [isStatusesModified, setIsStatusesModified] = useState(false);
     const [editableStatuses, setEditableStatuses] = useState<any[]>([]);
     const [editingColorIndex, setEditingColorIndex] = useState<number | null>(null);
+    const [draggedStatusIdx, setDraggedStatusIdx] = useState<number | null>(null);
 
     // Load template hook functions
     const {
@@ -105,10 +116,11 @@ export default function Projects() {
             if (!selectedTemplateId) return;
             const details = await getTemplateDetails(selectedTemplateId);
             if (details && details.statuses) {
-                setEditableStatuses(details.statuses.map((s, idx) => ({
+                setEditableStatuses(details.statuses.map((s: any, idx: number) => ({
                     ...s,
-                    id: `temp-${idx}-${Date.now()}`, // More stable temp ID
-                    position: idx
+                    id: `temp-${idx}-${Date.now()}`,
+                    position: idx,
+                    category: s.category || (s.is_completed ? 'done' : s.is_default ? 'todo' : 'active'),
                 })));
                 setIsStatusesModified(false); // Reset modification flag on template change
             }
@@ -145,11 +157,11 @@ export default function Projects() {
             // Fetch all statuses for these projects to known which custom statuses are "completed"
             const { data: allStatuses } = await supabase
                 .from('project_statuses')
-                .select('id, is_completed')
+                .select('id, is_completed, category')
                 .in('project_id', allProjectIds);
 
             const completedStatusIds = new Set(
-                (allStatuses || []).filter(s => s.is_completed).map(s => s.id)
+                (allStatuses || []).filter(s => s.category === 'done' || s.category === 'cancelled' || s.is_completed).map(s => s.id)
             );
 
             // Fetch ALL tasks for these projects in one single query
@@ -233,6 +245,18 @@ export default function Projects() {
     const handleCreateProject = async () => {
         if (!newProjectName.trim() || !currentWorkspace?.id || !user) return;
 
+        // Validate category constraints
+        const doneCount = editableStatuses.filter(s => (s as any).category === 'done').length;
+        const todoCount = editableStatuses.filter(s => (s as any).category === 'todo').length;
+        if (doneCount !== 1) {
+            Alert.alert('Invalid Statuses', 'You need exactly 1 status with the "Done" category for completion tracking.');
+            return;
+        }
+        if (todoCount < 1) {
+            Alert.alert('Invalid Statuses', 'You need at least 1 status with the "Todo" category for new tasks.');
+            return;
+        }
+
         setIsSubmitting(true);
         try {
             let projectId: string | null = null;
@@ -256,13 +280,17 @@ export default function Projects() {
                         icon: selectedTemplate?.icon || 'folder',
                         color: selectedTemplate?.color || '#3B82F6'
                     },
-                    editableStatuses.map((s, idx) => ({
-                        name: s.name,
-                        color: s.color,
-                        position: idx,
-                        is_default: s.is_default,
-                        is_completed: s.is_completed
-                    }))
+                    editableStatuses.map((s, idx) => {
+                        const cat = (s as any).category || 'active';
+                        return {
+                            name: s.name,
+                            color: s.color,
+                            position: idx,
+                            is_default: cat === 'todo',
+                            is_completed: cat === 'done' || cat === 'cancelled',
+                            category: cat,
+                        };
+                    })
                 );
 
                 if (error) throw error;
@@ -349,115 +377,191 @@ export default function Projects() {
     };
 
     return (
-        <View style={styles.container}>
-            {/* Header / Search Area */}
-            <View style={styles.header}>
-                <View style={styles.searchContainer}>
-                    <Search size={20} color="#94A3B8" />
+        <View style={[styles.container, { backgroundColor: colors.background }]}>
+            {/* ─── Header ─── */}
+            <View style={[styles.header, { paddingTop: 16 }]}>
+                <View style={styles.titleRow}>
+                    <View>
+                        <Text style={[styles.pageTitle, { color: colors.text }]}>
+                            {showArchived ? 'Archived' : 'Projects'}
+                        </Text>
+                        <Text style={[styles.pageSubtitle, { color: colors.textSecondary }]}>
+                            {filteredProjects.length} {showArchived ? 'archived' : 'active'} project{filteredProjects.length !== 1 ? 's' : ''}
+                        </Text>
+                    </View>
+                    <View style={styles.headerActions}>
+                        <TouchableOpacity
+                            style={[
+                                styles.archiveToggle,
+                                {
+                                    backgroundColor: showArchived ? colors.primary + '15' : 'transparent',
+                                    borderColor: showArchived ? colors.primary + '30' : colors.border,
+                                }
+                            ]}
+                            onPress={() => setShowArchived(!showArchived)}
+                            activeOpacity={0.7}
+                        >
+                            <Archive size={18} color={showArchived ? colors.primary : colors.textTertiary} />
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            style={[
+                                styles.addProjectBtn,
+                                { backgroundColor: colors.primary }
+                            ]}
+                            onPress={() => setIsCreateModalOpen(true)}
+                            activeOpacity={0.8}
+                        >
+                            <Plus size={18} color="#fff" strokeWidth={2.5} />
+                        </TouchableOpacity>
+                    </View>
+                </View>
+
+                {/* ─── Search ─── */}
+                <View style={[
+                    styles.searchBar,
+                    {
+                        backgroundColor: colors.card,
+                        borderColor: colors.border,
+                        ...Platform.select({
+                            ios: { shadowColor: colors.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 6 },
+                            android: { elevation: 1 },
+                        }),
+                    }
+                ]}>
+                    <Search size={18} color={colors.textTertiary} />
                     <TextInput
-                        style={styles.searchInput}
+                        style={[styles.searchInput, { color: colors.text }]}
                         placeholder="Search projects..."
                         value={searchQuery}
                         onChangeText={setSearchQuery}
-                        placeholderTextColor="#94A3B8"
+                        placeholderTextColor={colors.textTertiary}
                     />
+                    {searchQuery.length > 0 && (
+                        <TouchableOpacity onPress={() => setSearchQuery('')} hitSlop={8}>
+                            <X size={16} color={colors.textTertiary} />
+                        </TouchableOpacity>
+                    )}
                 </View>
-                <TouchableOpacity
-                    style={[styles.archiveToggle, showArchived && styles.archiveToggleActive]}
-                    onPress={() => setShowArchived(!showArchived)}
-                >
-                    <Archive size={20} color={showArchived ? '#FFFFFF' : '#64748B'} />
-                </TouchableOpacity>
             </View>
 
-            {/* Creating Project FAB */}
+            {/* ─── FAB ─── */}
             <TouchableOpacity
-                style={styles.fab}
+                style={[
+                    styles.fab,
+                    {
+                        backgroundColor: colors.primary,
+                        ...Platform.select({
+                            ios: { shadowColor: colors.primary, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.35, shadowRadius: 10 },
+                            android: { elevation: 6 },
+                        }),
+                    }
+                ]}
                 onPress={() => setIsCreateModalOpen(true)}
+                activeOpacity={0.85}
             >
-                <Plus size={24} color="#FFFFFF" strokeWidth={3} />
+                <Plus size={24} color={colors.buttonText} strokeWidth={2.5} />
             </TouchableOpacity>
 
+            {/* ─── List ─── */}
             <ScrollView
                 contentContainerStyle={styles.scrollContent}
-                refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#F97316" />}
+                refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
+                showsVerticalScrollIndicator={false}
             >
                 {isLoading && projects.length === 0 ? (
-                    <View style={styles.centerParams}>
-                        <Loader2 size={32} color="#F97316" className="animate-spin" />
-                        <Text style={styles.loadingText}>Loading Projects...</Text>
-                    </View>
+                    <ProjectsSkeleton />
                 ) : filteredProjects.length === 0 ? (
                     <View style={styles.emptyState}>
-                        <View style={styles.emptyIconBg}>
-                            <FolderKanban size={48} color="#F97316" />
+                        <View style={[styles.emptyIconBg, { backgroundColor: colors.primary + '12' }]}>
+                            <FolderKanban size={40} color={colors.primary} />
                         </View>
-                        <Text style={styles.emptyTitle}>
-                            {showArchived ? 'No archived projects' : 'No projects found'}
+                        <Text style={[styles.emptyTitle, { color: colors.text }]}>
+                            {showArchived ? 'No Archived Projects' : 'No Projects Yet'}
                         </Text>
-                        <Text style={styles.emptyDesc}>
+                        <Text style={[styles.emptyDesc, { color: colors.textSecondary }]}>
                             {showArchived
-                                ? 'Archived projects will appear here.'
-                                : 'Create a new project to get started.'}
+                                ? 'Projects you archive will appear here.'
+                                : 'Organise your work into projects.\nTap below to create your first one.'}
                         </Text>
                         {!showArchived && (
-                            <TouchableOpacity style={styles.createButtonEmpty} onPress={() => setIsCreateModalOpen(true)}>
-                                <Text style={styles.createButtonText}>Create First Project</Text>
+                            <TouchableOpacity
+                                style={[styles.createBtn, { backgroundColor: colors.primary }]}
+                                onPress={() => setIsCreateModalOpen(true)}
+                                activeOpacity={0.85}
+                            >
+                                <Plus size={18} color="#fff" strokeWidth={2.5} />
+                                <Text style={styles.createBtnText}>Create Project</Text>
                             </TouchableOpacity>
                         )}
                     </View>
                 ) : (
-                    <View style={styles.grid}>
+                    <View style={styles.cardList}>
                         {filteredProjects.map(project => {
-                            const progress = project.taskCounts && project.taskCounts.total > 0
-                                ? Math.round((project.taskCounts.done / project.taskCounts.total) * 100)
-                                : 0;
+                            const total = project.taskCounts?.total ?? 0;
+                            const done = project.taskCounts?.done ?? 0;
+                            const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+                            const pColor = project.color || colors.primary;
 
                             return (
                                 <TouchableOpacity
                                     key={project.id}
-                                    style={styles.card}
+                                    style={[
+                                        styles.card,
+                                        {
+                                            backgroundColor: colors.card,
+                                            borderColor: colors.border,
+                                            ...Platform.select({
+                                                ios: { shadowColor: colors.shadow, shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.08, shadowRadius: 10 },
+                                                android: { elevation: 2 },
+                                            }),
+                                        }
+                                    ]}
                                     onPress={() => router.push(`/project/${project.id}` as any)}
+                                    activeOpacity={0.7}
                                 >
-                                    {/* Color Bar */}
-                                    <View style={[styles.colorBar, { backgroundColor: project.color || '#3B82F6' }]} />
+                                    {/* Left color accent */}
+                                    <View style={[styles.cardAccent, { backgroundColor: pColor }]} />
 
-                                    <View style={styles.cardHeader}>
-                                        <View style={[styles.iconContainer, { backgroundColor: (project.color || '#3B82F6') + '20' }]}>
-                                            <FolderKanban size={20} color={project.color || '#3B82F6'} />
-                                        </View>
-                                        <TouchableOpacity onPress={() => openOptions(project)} style={{ padding: 4 }}>
-                                            <MoreVertical size={20} color="#94A3B8" />
-                                        </TouchableOpacity>
-                                    </View>
-
-                                    <Text style={styles.cardTitle} numberOfLines={1}>{project.name}</Text>
-                                    <Text style={styles.cardDesc} numberOfLines={2}>
-                                        {project.description || 'No description'}
-                                    </Text>
-
-                                    <View style={styles.progressContainer}>
-                                        <View style={styles.progressHeader}>
-                                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                                                <CheckSquare size={14} color="#64748B" />
-                                                <Text style={styles.progressText}>
-                                                    {project.taskCounts?.done || 0}/{project.taskCounts?.total || 0}
-                                                </Text>
+                                    {/* Content */}
+                                    <View style={styles.cardBody}>
+                                        {/* Row 1: icon + title + menu */}
+                                        <View style={styles.cardTopRow}>
+                                            <View style={[styles.cardIcon, { backgroundColor: pColor + '18' }]}>
+                                                <FolderKanban size={18} color={pColor} />
                                             </View>
-                                            <Text style={[styles.progressPercent, { color: project.color || '#3B82F6' }]}>
-                                                {progress}%
-                                            </Text>
+                                            <View style={styles.cardTitleWrap}>
+                                                <Text style={[styles.cardTitle, { color: colors.text }]} numberOfLines={1}>
+                                                    {project.name}
+                                                </Text>
+                                                {project.description ? (
+                                                    <Text style={[styles.cardDesc, { color: colors.textSecondary }]} numberOfLines={1}>
+                                                        {project.description}
+                                                    </Text>
+                                                ) : null}
+                                            </View>
+                                            <MoreVertical size={18} color={colors.textTertiary} />
                                         </View>
-                                        <View style={styles.progressBarBg}>
-                                            <View
-                                                style={[
-                                                    styles.progressBarFill,
-                                                    {
-                                                        width: `${progress}%`,
-                                                        backgroundColor: project.color || '#3B82F6'
-                                                    }
-                                                ]}
-                                            />
+
+                                        {/* Row 2: stats chips + progress */}
+                                        <View style={styles.cardBottomRow}>
+                                            <View style={styles.chipRow}>
+                                                <View style={[styles.chip, { backgroundColor: colors.surface }]}>
+                                                    <CheckSquare size={12} color={colors.textSecondary} />
+                                                    <Text style={[styles.chipText, { color: colors.textSecondary }]}>{done}/{total}</Text>
+                                                </View>
+                                                <View style={[styles.chip, { backgroundColor: colors.surface }]}>
+                                                    <Clock size={12} color={colors.textSecondary} />
+                                                    <Text style={[styles.chipText, { color: colors.textSecondary }]}>
+                                                        {new Date(project.created_at).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                                    </Text>
+                                                </View>
+                                            </View>
+                                            <View style={styles.progressWrap}>
+                                                <View style={[styles.progressTrack, { backgroundColor: colors.borderLight }]}>
+                                                    <View style={[styles.progressFill, { width: `${pct}%`, backgroundColor: pColor }]} />
+                                                </View>
+                                                <Text style={[styles.progressPct, { color: pColor }]}>{pct}%</Text>
+                                            </View>
                                         </View>
                                     </View>
                                 </TouchableOpacity>
@@ -477,249 +581,424 @@ export default function Projects() {
                     setCreateStep(1);
                 }}
             >
-                <View style={styles.modalOverlay}>
-                    <View style={styles.modalContentWrapper}>
-                        <View style={styles.modalHeader}>
-                            <Text style={styles.modalTitle}>
-                                {createStep === 1 ? 'New Project - Step 1' : 'New Project - Step 2'}
-                            </Text>
-                            <TouchableOpacity onPress={() => {
-                                setIsCreateModalOpen(false);
-                                setCreateStep(1);
-                            }}>
-                                <Text style={styles.closeText}>Close</Text>
+                <View style={[styles.modalOverlay, { backgroundColor: 'rgba(0,0,0,0.5)' }]}>
+                    <View style={[
+                        styles.modalContentWrapper, 
+                        { 
+                            backgroundColor: colors.card,
+                            borderColor: colors.border,
+                        }
+                    ]}>
+                        {/* Header with step indicator */}
+                        <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
+                            <View style={{ flex: 1 }}>
+                                <Text style={[styles.modalTitle, { color: colors.text }]}>
+                                    {createStep === 1 ? 'Create Project' : 'Choose Template'}
+                                </Text>
+                                <Text style={{ fontSize: 13, color: colors.textTertiary, marginTop: 2 }}>
+                                    {createStep === 1 ? 'Give your project a name' : 'Pick a workflow template'}
+                                </Text>
+                            </View>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginRight: 12 }}>
+                                <View style={[styles.stepDot, { backgroundColor: colors.primary }]} />
+                                <View style={[styles.stepLine, { backgroundColor: createStep === 2 ? colors.primary : colors.border }]} />
+                                <View style={[styles.stepDot, { backgroundColor: createStep === 2 ? colors.primary : colors.border }]} />
+                            </View>
+                            <TouchableOpacity 
+                                onPress={() => { setIsCreateModalOpen(false); setCreateStep(1); }}
+                                style={[styles.modalCloseBtn, { backgroundColor: colors.surface }]}
+                            >
+                                <X size={18} color={colors.textSecondary} />
                             </TouchableOpacity>
                         </View>
 
-                        <ScrollView style={{ maxHeight: 400 }} showsVerticalScrollIndicator={false}>
+                        <ScrollView style={{ maxHeight: 420 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
                             {createStep === 1 ? (
-                                // STEP 1: Name and Description
-                                <>
+                                <View style={{ paddingTop: 4 }}>
                                     <View style={styles.inputGroup}>
-                                        <Text style={styles.label}>Project Name *</Text>
+                                        <Text style={[styles.label, { color: colors.textSecondary }]}>Project Name <Text style={{ color: colors.primary }}>*</Text></Text>
                                         <TextInput
-                                            style={styles.input}
+                                            style={[
+                                                styles.input, 
+                                                { 
+                                                    backgroundColor: colors.surface,
+                                                    borderColor: colors.border,
+                                                    color: colors.text,
+                                                }
+                                            ]}
                                             placeholder="e.g. Website Redesign"
                                             value={newProjectName}
                                             onChangeText={setNewProjectName}
+                                            placeholderTextColor={colors.textTertiary}
                                             autoFocus
                                         />
                                     </View>
 
                                     <View style={styles.inputGroup}>
-                                        <Text style={styles.label}>Description</Text>
+                                        <Text style={[styles.label, { color: colors.textSecondary }]}>Description</Text>
                                         <TextInput
-                                            style={[styles.input, styles.textArea]}
+                                            style={[
+                                                styles.input, 
+                                                styles.textArea,
+                                                { 
+                                                    backgroundColor: colors.surface,
+                                                    borderColor: colors.border,
+                                                    color: colors.text,
+                                                }
+                                            ]}
                                             placeholder="What is this project about?"
                                             value={newProjectDesc}
                                             onChangeText={setNewProjectDesc}
                                             multiline
+                                            placeholderTextColor={colors.textTertiary}
                                         />
                                     </View>
-                                </>
+                                </View>
                             ) : (
-                                // STEP 2: Template Selection and Customization
-                                <>
+                                <View style={{ paddingTop: 4 }}>
                                     <View style={styles.inputGroup}>
-                                        <Text style={styles.label}>Template</Text>
+                                        <Text style={[styles.label, { color: colors.textSecondary }]}>Template</Text>
                                         {templatesLoading ? (
                                             <View style={{ padding: 20, alignItems: 'center' }}>
-                                                <ActivityIndicator size="small" color="#F97316" />
-                                                <Text style={{ fontSize: 12, color: '#64748B', marginTop: 4 }}>Loading templates...</Text>
+                                                <ActivityIndicator size="small" color={colors.primary} />
+                                                <Text style={{ fontSize: 12, color: colors.textTertiary, marginTop: 6 }}>Loading templates...</Text>
                                             </View>
                                         ) : (
-                                            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.templateScroll}>
-                                                {/* System Templates */}
-                                                {SYSTEM_TEMPLATES.map(template => (
-                                                    <TouchableOpacity
-                                                        key={template.id}
-                                                        style={[
-                                                            styles.templateCard,
-                                                            selectedTemplateId === template.id && styles.templateCardActive,
-                                                            { borderColor: selectedTemplateId === template.id ? template.color : '#E2E8F0' }
-                                                        ]}
-                                                        onPress={() => setSelectedTemplateId(template.id)}
-                                                    >
-                                                        <View style={[styles.templateIcon, { backgroundColor: template.color + '20' }]}>
-                                                            <FolderKanban size={20} color={template.color} />
-                                                        </View>
-                                                        <Text style={styles.templateName} numberOfLines={1}>{template.name}</Text>
-                                                        <View style={styles.templateBadge}>
-                                                            <Text style={styles.templateBadgeText}>System</Text>
-                                                        </View>
-                                                    </TouchableOpacity>
-                                                ))}
+                                            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.templateScroll} contentContainerStyle={{ paddingRight: 8 }}>
+                                                {SYSTEM_TEMPLATES.map(template => {
+                                                    const isActive = selectedTemplateId === template.id;
+                                                    return (
+                                                        <TouchableOpacity
+                                                            key={template.id}
+                                                            style={[
+                                                                styles.templateCard,
+                                                                { backgroundColor: colors.surface, borderColor: colors.border },
+                                                                isActive && { backgroundColor: template.color + '12', borderColor: template.color, borderWidth: 2 },
+                                                            ]}
+                                                            onPress={() => setSelectedTemplateId(template.id)}
+                                                            activeOpacity={0.7}
+                                                        >
+                                                            {isActive && (
+                                                                <View style={[styles.templateCheck, { backgroundColor: template.color }]}>
+                                                                    <CheckSquare size={10} color="#FFF" />
+                                                                </View>
+                                                            )}
+                                                            <View style={[styles.templateIcon, { backgroundColor: template.color + '20' }]}>
+                                                                <FolderKanban size={20} color={template.color} />
+                                                            </View>
+                                                            <Text style={[styles.templateName, { color: isActive ? template.color : colors.text }]} numberOfLines={2}>{template.name}</Text>
+                                                        </TouchableOpacity>
+                                                    );
+                                                })}
 
-                                                {/* Workspace Templates */}
-                                                {workspaceTemplates.map(template => (
-                                                    <TouchableOpacity
-                                                        key={template.id}
-                                                        style={[
-                                                            styles.templateCard,
-                                                            selectedTemplateId === template.id && styles.templateCardActive,
-                                                            { borderColor: selectedTemplateId === template.id ? template.color : '#E2E8F0' }
-                                                        ]}
-                                                        onPress={() => setSelectedTemplateId(template.id)}
-                                                    >
-                                                        <View style={[styles.templateIcon, { backgroundColor: template.color + '20' }]}>
-                                                            <LayoutTemplate size={20} color={template.color} />
-                                                        </View>
-                                                        <Text style={styles.templateName} numberOfLines={1}>{template.name}</Text>
-                                                        <View style={[styles.templateBadge, { backgroundColor: '#F1F5F9' }]}>
-                                                            <Text style={[styles.templateBadgeText, { color: '#64748B' }]}>Custom</Text>
-                                                        </View>
-                                                    </TouchableOpacity>
-                                                ))}
-
+                                                {workspaceTemplates.map(template => {
+                                                    const isActive = selectedTemplateId === template.id;
+                                                    return (
+                                                        <TouchableOpacity
+                                                            key={template.id}
+                                                            style={[
+                                                                styles.templateCard,
+                                                                { backgroundColor: colors.surface, borderColor: colors.border },
+                                                                isActive && { backgroundColor: template.color + '12', borderColor: template.color, borderWidth: 2 },
+                                                            ]}
+                                                            onPress={() => setSelectedTemplateId(template.id)}
+                                                            activeOpacity={0.7}
+                                                        >
+                                                            {isActive && (
+                                                                <View style={[styles.templateCheck, { backgroundColor: template.color }]}>
+                                                                    <CheckSquare size={10} color="#FFF" />
+                                                                </View>
+                                                            )}
+                                                            <View style={[styles.templateIcon, { backgroundColor: template.color + '20' }]}>
+                                                                <LayoutTemplate size={20} color={template.color} />
+                                                            </View>
+                                                            <Text style={[styles.templateName, { color: isActive ? template.color : colors.text }]} numberOfLines={2}>{template.name}</Text>
+                                                            <View style={[styles.templateBadge, { backgroundColor: colors.card }]}>
+                                                                <Text style={[styles.templateBadgeText, { color: colors.textTertiary }]}>Custom</Text>
+                                                            </View>
+                                                        </TouchableOpacity>
+                                                    );
+                                                })}
                                             </ScrollView>
                                         )}
                                     </View>
 
                                     <View style={styles.inputGroup}>
                                         <View style={styles.sectionHeader}>
-                                            <Text style={styles.label}>Statuses</Text>
-                                            <TouchableOpacity
-                                                style={styles.addStatusBtn}
-                                                onPress={() => {
-                                                    const newPos = editableStatuses.length;
-                                                    setEditableStatuses([...editableStatuses, {
-                                                        id: Math.random().toString(36).substr(2, 9),
-                                                        name: 'New Status',
-                                                        color: '#64748B',
-                                                        position: newPos,
-                                                        is_default: false,
-                                                        is_completed: false
-                                                    }]);
-                                                    setIsStatusesModified(true);
-                                                }}
-                                            >
-                                                <Plus size={16} color="#F97316" />
-                                                <Text style={styles.addStatusText}>Add Status</Text>
-                                            </TouchableOpacity>
+                                            <Text style={[styles.label, { color: colors.textSecondary }]}>Workflow Statuses</Text>
                                         </View>
-                                        <View style={styles.statusList}>
-                                            {editableStatuses.map((status, index) => (
-                                                <View key={status.id} style={styles.statusItemContainer}>
-                                                    <View style={styles.statusItem}>
-                                                        <View style={styles.reorderButtons}>
-                                                            <TouchableOpacity
-                                                                onPress={() => {
-                                                                    if (index > 0) {
-                                                                        const newStatuses = [...editableStatuses];
-                                                                        [newStatuses[index], newStatuses[index - 1]] = [newStatuses[index - 1], newStatuses[index]];
-                                                                        setEditableStatuses(newStatuses);
-                                                                        setIsStatusesModified(true);
-                                                                    }
-                                                                }}
-                                                                disabled={index === 0}
-                                                            >
-                                                                <ChevronUp size={16} color={index === 0 ? '#CBD5E1' : '#94A3B8'} />
-                                                            </TouchableOpacity>
-                                                            <TouchableOpacity
-                                                                onPress={() => {
-                                                                    if (index < editableStatuses.length - 1) {
-                                                                        const newStatuses = [...editableStatuses];
-                                                                        [newStatuses[index], newStatuses[index + 1]] = [newStatuses[index + 1], newStatuses[index]];
-                                                                        setEditableStatuses(newStatuses);
-                                                                        setIsStatusesModified(true);
-                                                                    }
-                                                                }}
-                                                                disabled={index === editableStatuses.length - 1}
-                                                            >
-                                                                <ChevronDown size={16} color={index === editableStatuses.length - 1 ? '#CBD5E1' : '#94A3B8'} />
-                                                            </TouchableOpacity>
-                                                        </View>
 
-                                                        <TouchableOpacity
-                                                            style={[styles.statusColorCircle, { backgroundColor: status.color }]}
-                                                            onPress={() => setEditingColorIndex(editingColorIndex === index ? null : index)}
-                                                        />
-                                                        <TextInput
-                                                            style={styles.statusInput}
-                                                            value={status.name}
-                                                            onChangeText={(text) => {
-                                                                const newStatuses = [...editableStatuses];
-                                                                newStatuses[index].name = text;
-                                                                setEditableStatuses(newStatuses);
-                                                                setIsStatusesModified(true);
-                                                            }}
-                                                        />
-                                                        <TouchableOpacity
-                                                            onPress={() => {
-                                                                const newStatuses = [...editableStatuses];
-                                                                newStatuses[index].is_completed = !newStatuses[index].is_completed;
-                                                                setEditableStatuses(newStatuses);
-                                                                setIsStatusesModified(true);
-                                                            }}
-                                                            style={[styles.statusToggle, status.is_completed && styles.statusToggleDone]}
-                                                        >
-                                                            <CheckSquare size={14} color={status.is_completed ? '#FFFFFF' : '#94A3B8'} />
-                                                        </TouchableOpacity>
-                                                        <TouchableOpacity
-                                                            onPress={() => {
-                                                                setEditableStatuses(editableStatuses.filter((_, i) => i !== index));
-                                                                setIsStatusesModified(true);
-                                                            }}
-                                                        >
-                                                            <Trash2 size={16} color="#EF4444" />
-                                                        </TouchableOpacity>
-                                                    </View>
-
-                                                    {editingColorIndex === index && (
-                                                        <View style={styles.colorPalette}>
-                                                            {['#64748B', '#3B82F6', '#F97316', '#22C55E', '#EF4444', '#A855F7', '#EC4899', '#06B6D4', '#8B5CF6', '#F59E0B'].map(color => (
-                                                                <TouchableOpacity
-                                                                    key={color}
-                                                                    style={[styles.paletteColor, { backgroundColor: color }, status.color === color && styles.paletteColorActive]}
-                                                                    onPress={() => {
-                                                                        const newStatuses = [...editableStatuses];
-                                                                        newStatuses[index].color = color;
-                                                                        setEditableStatuses(newStatuses);
-                                                                        setEditingColorIndex(null);
-                                                                        setIsStatusesModified(true);
-                                                                    }}
-                                                                />
-                                                            ))}
-                                                        </View>
-                                                    )}
+                                        {/* Validation warnings */}
+                                        {(() => {
+                                            const doneCount = editableStatuses.filter(s => (s as any).category === 'done').length;
+                                            const todoCount = editableStatuses.filter(s => (s as any).category === 'todo').length;
+                                            const warnings: string[] = [];
+                                            if (doneCount === 0) warnings.push('⚠ Need exactly 1 "Done" status for completion tracking');
+                                            if (todoCount === 0) warnings.push('⚠ Need at least 1 "Todo" status as default for new tasks');
+                                            return warnings.length > 0 ? (
+                                                <View style={{ marginBottom: 10, padding: 10, borderRadius: 10, backgroundColor: '#FEF2F2', borderWidth: 1, borderColor: '#FECACA' }}>
+                                                    {warnings.map((w, i) => (
+                                                        <Text key={i} style={{ fontSize: 11, color: '#DC2626', fontWeight: '500', lineHeight: 16 }}>{w}</Text>
+                                                    ))}
                                                 </View>
-                                            ))}
-                                        </View>
+                                            ) : null;
+                                        })()}
+
+                                        {/* Drag-and-drop hint */}
+                                        {draggedStatusIdx === null && (
+                                            <Text style={{ fontSize: 10, color: colors.textTertiary, marginBottom: 8, fontStyle: 'italic' }}>Long-press a status to drag it to another category</Text>
+                                        )}
+
+                                        {/* Category-grouped status editor with drag-and-drop */}
+                                        {(['todo', 'active', 'done', 'cancelled'] as const).map(catKey => {
+                                            const cfg = CATEGORY_CONFIG[catKey];
+                                            const catStatuses = editableStatuses
+                                                .map((s, idx) => ({ ...s, _idx: idx }))
+                                                .filter(s => (s as any).category === catKey);
+                                            const isSingleton = catKey === 'done' || catKey === 'cancelled';
+                                            const canAdd = !isSingleton || catStatuses.length === 0;
+                                            const isDragging = draggedStatusIdx !== null;
+                                            const draggedStatus = isDragging ? editableStatuses[draggedStatusIdx] : null;
+                                            const draggedFromThisCat = isDragging && (draggedStatus as any)?.category === catKey;
+                                            const canDropHere = isDragging && !draggedFromThisCat && (!isSingleton || catStatuses.length === 0);
+
+                                            return (
+                                                <View key={catKey} style={{ marginBottom: 12 }}>
+                                                    {/* Category header / Drop zone */}
+                                                    <TouchableOpacity
+                                                        activeOpacity={canDropHere ? 0.7 : 1}
+                                                        onPress={() => {
+                                                            if (!canDropHere || draggedStatusIdx === null) return;
+                                                            const newStatuses = [...editableStatuses];
+                                                            (newStatuses[draggedStatusIdx] as any).category = catKey;
+                                                            newStatuses[draggedStatusIdx].is_completed = catKey === 'done' || catKey === 'cancelled';
+                                                            newStatuses[draggedStatusIdx].is_default = catKey === 'todo';
+                                                            setEditableStatuses(newStatuses);
+                                                            setIsStatusesModified(true);
+                                                            setDraggedStatusIdx(null);
+                                                        }}
+                                                        style={{
+                                                            flexDirection: 'row', alignItems: 'center', marginBottom: 6, gap: 8,
+                                                            padding: canDropHere ? 8 : 0,
+                                                            borderRadius: canDropHere ? 10 : 0,
+                                                            borderWidth: canDropHere ? 2 : 0,
+                                                            borderStyle: 'dashed' as any,
+                                                            borderColor: canDropHere ? cfg.color : 'transparent',
+                                                            backgroundColor: canDropHere ? cfg.bg : 'transparent',
+                                                        }}
+                                                    >
+                                                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 }}>
+                                                            <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: cfg.color }} />
+                                                            <Text style={{ fontSize: 12, fontWeight: '700', color: cfg.color, textTransform: 'uppercase', letterSpacing: 0.5 }}>{cfg.label}</Text>
+                                                            <Text style={{ fontSize: 10, color: colors.textTertiary }}>{catStatuses.length}</Text>
+                                                            {catKey === 'todo' && !isDragging && <Text style={{ fontSize: 9, color: colors.textTertiary, fontStyle: 'italic' }}>· default</Text>}
+                                                            {isSingleton && !isDragging && <Text style={{ fontSize: 9, color: colors.textTertiary, fontStyle: 'italic' }}>· max 1</Text>}
+                                                            {canDropHere && <Text style={{ fontSize: 10, fontWeight: '600', color: cfg.color, marginLeft: 4 }}>↓ Drop here</Text>}
+                                                            {isDragging && !canDropHere && !draggedFromThisCat && isSingleton && catStatuses.length > 0 && (
+                                                                <Text style={{ fontSize: 9, color: colors.textTertiary, fontStyle: 'italic', marginLeft: 4 }}>full</Text>
+                                                            )}
+                                                        </View>
+                                                        {!isDragging && canAdd && (
+                                                            <TouchableOpacity
+                                                                style={{ flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, backgroundColor: cfg.color + '15' }}
+                                                                onPress={() => {
+                                                                    const defaultColors: Record<string, string> = { todo: '#3B82F6', active: '#F97316', done: '#22C55E', cancelled: '#EF4444' };
+                                                                    const newStatus = {
+                                                                        id: Math.random().toString(36).substr(2, 9),
+                                                                        name: catKey === 'done' ? 'Done' : catKey === 'cancelled' ? 'Cancelled' : 'New Status',
+                                                                        color: defaultColors[catKey] || '#64748B',
+                                                                        position: editableStatuses.length,
+                                                                        is_default: catKey === 'todo',
+                                                                        is_completed: catKey === 'done' || catKey === 'cancelled',
+                                                                        category: catKey,
+                                                                    };
+                                                                    setEditableStatuses([...editableStatuses, newStatus]);
+                                                                    setIsStatusesModified(true);
+                                                                }}
+                                                            >
+                                                                <Plus size={12} color={cfg.color} />
+                                                                <Text style={{ fontSize: 10, fontWeight: '600', color: cfg.color }}>Add</Text>
+                                                            </TouchableOpacity>
+                                                        )}
+                                                    </TouchableOpacity>
+
+                                                    {/* Status items in this category */}
+                                                    {catStatuses.length === 0 && !canDropHere ? (
+                                                        <View style={{ paddingVertical: 8, paddingHorizontal: 12, borderRadius: 8, borderWidth: 1, borderStyle: 'dashed', borderColor: cfg.color + '30', backgroundColor: cfg.bg }}>
+                                                            <Text style={{ fontSize: 11, color: cfg.color, opacity: 0.6, textAlign: 'center' }}>No {cfg.label.toLowerCase()} statuses</Text>
+                                                        </View>
+                                                    ) : catStatuses.length > 0 ? (
+                                                        <View style={{ gap: 4 }}>
+                                                            {catStatuses.map((status) => {
+                                                                const globalIdx = status._idx;
+                                                                const isBeingDragged = draggedStatusIdx === globalIdx;
+                                                                return (
+                                                                    <View key={status.id} style={{ opacity: isBeingDragged ? 0.4 : 1 }}>
+                                                                        <TouchableOpacity
+                                                                            activeOpacity={0.8}
+                                                                            onLongPress={() => {
+                                                                                setDraggedStatusIdx(globalIdx);
+                                                                                setEditingColorIndex(null);
+                                                                            }}
+                                                                            delayLongPress={300}
+                                                                            style={[styles.statusItem, {
+                                                                                backgroundColor: isBeingDragged ? cfg.bg : colors.surface,
+                                                                                borderColor: isBeingDragged ? cfg.color : cfg.color + '25',
+                                                                                borderWidth: isBeingDragged ? 2 : 1,
+                                                                                borderLeftWidth: 3, borderLeftColor: cfg.color,
+                                                                            }]}
+                                                                        >
+                                                                            <TouchableOpacity
+                                                                                style={[styles.statusColorCircle, { backgroundColor: status.color }]}
+                                                                                onPress={() => !isDragging && setEditingColorIndex(editingColorIndex === globalIdx ? null : globalIdx)}
+                                                                            />
+                                                                            <TextInput
+                                                                                style={[styles.statusInput, { color: colors.text }]}
+                                                                                value={status.name}
+                                                                                editable={!isDragging}
+                                                                                onChangeText={(text) => {
+                                                                                    const newStatuses = [...editableStatuses];
+                                                                                    newStatuses[globalIdx].name = text;
+                                                                                    setEditableStatuses(newStatuses);
+                                                                                    setIsStatusesModified(true);
+                                                                                }}
+                                                                                placeholderTextColor={colors.textTertiary}
+                                                                            />
+
+                                                                            {/* Category pill (tap to cycle when not dragging) */}
+                                                                            {!isDragging && (
+                                                                                <TouchableOpacity
+                                                                                    onPress={() => {
+                                                                                        const CATS = ['todo', 'active', 'done', 'cancelled'] as const;
+                                                                                        const curIdx = CATS.indexOf(catKey);
+                                                                                        let nextCat = CATS[(curIdx + 1) % CATS.length];
+                                                                                        if (nextCat === 'done' && editableStatuses.some((s, i) => i !== globalIdx && (s as any).category === 'done')) {
+                                                                                            nextCat = 'cancelled';
+                                                                                        }
+                                                                                        if (nextCat === 'cancelled' && editableStatuses.some((s, i) => i !== globalIdx && (s as any).category === 'cancelled')) {
+                                                                                            nextCat = 'todo';
+                                                                                        }
+                                                                                        const newStatuses = [...editableStatuses];
+                                                                                        (newStatuses[globalIdx] as any).category = nextCat;
+                                                                                        newStatuses[globalIdx].is_completed = nextCat === 'done' || nextCat === 'cancelled';
+                                                                                        newStatuses[globalIdx].is_default = nextCat === 'todo';
+                                                                                        setEditableStatuses(newStatuses);
+                                                                                        setIsStatusesModified(true);
+                                                                                    }}
+                                                                                    style={[styles.categoryPill, { backgroundColor: cfg.bg, borderColor: cfg.color + '40' }]}
+                                                                                >
+                                                                                    <Text style={[styles.categoryPillText, { color: cfg.color }]}>{cfg.short}</Text>
+                                                                                </TouchableOpacity>
+                                                                            )}
+
+                                                                            {/* Delete */}
+                                                                            {!isDragging && (
+                                                                                <TouchableOpacity
+                                                                                    onPress={() => {
+                                                                                        if (editableStatuses.length <= 2) {
+                                                                                            Alert.alert('Minimum Statuses', 'You need at least 2 statuses.');
+                                                                                            return;
+                                                                                        }
+                                                                                        if (catKey === 'done' && catStatuses.length <= 1) {
+                                                                                            Alert.alert('Required', 'You must keep a "Done" status for completion tracking. Add another Done status first, or move this one to a different category.');
+                                                                                            return;
+                                                                                        }
+                                                                                        setEditableStatuses(editableStatuses.filter((_, i) => i !== globalIdx));
+                                                                                        setIsStatusesModified(true);
+                                                                                    }}
+                                                                                >
+                                                                                    <Trash2 size={13} color="#EF4444" />
+                                                                                </TouchableOpacity>
+                                                                            )}
+                                                                        </TouchableOpacity>
+
+                                                                        {/* Inline color picker */}
+                                                                        {editingColorIndex === globalIdx && !isDragging && (
+                                                                            <View style={[styles.colorPalette, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                                                                                {['#64748B', '#3B82F6', '#F97316', '#22C55E', '#EF4444', '#A855F7', '#EC4899', '#06B6D4', '#8B5CF6', '#F59E0B'].map(color => (
+                                                                                    <TouchableOpacity
+                                                                                        key={color}
+                                                                                        style={[styles.paletteColor, { backgroundColor: color }, status.color === color && { borderColor: colors.text }]}
+                                                                                        onPress={() => {
+                                                                                            const newStatuses = [...editableStatuses];
+                                                                                            newStatuses[globalIdx].color = color;
+                                                                                            setEditableStatuses(newStatuses);
+                                                                                            setEditingColorIndex(null);
+                                                                                            setIsStatusesModified(true);
+                                                                                        }}
+                                                                                    />
+                                                                                ))}
+                                                                            </View>
+                                                                        )}
+                                                                    </View>
+                                                                );
+                                                            })}
+                                                        </View>
+                                                    ) : null}
+                                                </View>
+                                            );
+                                        })}
+
+                                        {/* Floating drag banner */}
+                                        {draggedStatusIdx !== null && editableStatuses[draggedStatusIdx] && (
+                                            <View style={{
+                                                flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: 12, marginTop: 4,
+                                                backgroundColor: colors.primary + '15', borderWidth: 1.5, borderColor: colors.primary + '40',
+                                            }}>
+                                                <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: editableStatuses[draggedStatusIdx].color }} />
+                                                <Text style={{ flex: 1, fontSize: 13, fontWeight: '600', color: colors.text }}>
+                                                    Moving "{editableStatuses[draggedStatusIdx].name}"
+                                                </Text>
+                                                <TouchableOpacity
+                                                    onPress={() => setDraggedStatusIdx(null)}
+                                                    style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border }}
+                                                >
+                                                    <Text style={{ fontSize: 11, fontWeight: '600', color: colors.textSecondary }}>Cancel</Text>
+                                                </TouchableOpacity>
+                                            </View>
+                                        )}
                                     </View>
-                                </>
+                                </View>
                             )}
                         </ScrollView>
 
                         {/* Action Buttons */}
-                        {createStep === 1 ? (
-                            <TouchableOpacity
-                                style={[styles.submitButton, !newProjectName.trim() && styles.submitButtonDisabled]}
-                                onPress={() => setCreateStep(2)}
-                                disabled={!newProjectName.trim()}
-                            >
-                                <Text style={styles.submitButtonText}>Next</Text>
-                            </TouchableOpacity>
-                        ) : (
-                            <View style={{ flexDirection: 'row', gap: 12 }}>
+                        <View style={[styles.modalFooter, { borderTopColor: colors.border }]}>
+                            {createStep === 1 ? (
                                 <TouchableOpacity
-                                    style={[styles.submitButton, { flex: 1, backgroundColor: '#64748B' }]}
-                                    onPress={() => setCreateStep(1)}
+                                    style={[styles.submitButton, { backgroundColor: colors.primary }, !newProjectName.trim() && { opacity: 0.5 }]}
+                                    onPress={() => setCreateStep(2)}
+                                    disabled={!newProjectName.trim()}
                                 >
-                                    <Text style={styles.submitButtonText}>Back</Text>
+                                    <Text style={styles.submitButtonText}>Next — Choose Template</Text>
+                                    <ChevronDown size={16} color="#FFF" style={{ transform: [{ rotate: '-90deg' }] }} />
                                 </TouchableOpacity>
-                                <TouchableOpacity
-                                    style={[styles.submitButton, { flex: 2 }, isSubmitting && styles.submitButtonDisabled]}
-                                    onPress={handleCreateProject}
-                                    disabled={isSubmitting}
-                                >
-                                    {isSubmitting ? (
-                                        <Text style={styles.submitButtonText}>Creating...</Text>
-                                    ) : (
-                                        <Text style={styles.submitButtonText}>Create Project</Text>
-                                    )}
-                                </TouchableOpacity>
-                            </View>
-                        )}
+                            ) : (
+                                <View style={{ flexDirection: 'row', gap: 10 }}>
+                                    <TouchableOpacity
+                                        style={[styles.submitButton, { flex: 1, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border }]}
+                                        onPress={() => setCreateStep(1)}
+                                    >
+                                        <ChevronDown size={16} color={colors.textSecondary} style={{ transform: [{ rotate: '90deg' }] }} />
+                                        <Text style={[styles.submitButtonText, { color: colors.textSecondary }]}>Back</Text>
+                                    </TouchableOpacity>
+                                    <TouchableOpacity
+                                        style={[styles.submitButton, { flex: 2, backgroundColor: colors.primary }, isSubmitting && { opacity: 0.6 }]}
+                                        onPress={handleCreateProject}
+                                        disabled={isSubmitting}
+                                    >
+                                        {isSubmitting ? (
+                                            <ActivityIndicator size="small" color="#FFF" />
+                                        ) : (
+                                            <>
+                                                <Text style={styles.submitButtonText}>Create Project</Text>
+                                                <Rocket size={16} color="#FFF" />
+                                            </>
+                                        )}
+                                    </TouchableOpacity>
+                                </View>
+                            )}
+                        </View>
                     </View>
                 </View>
             </Modal>
@@ -736,12 +1015,12 @@ export default function Projects() {
                     activeOpacity={1}
                     onPress={() => setShowOptionsModal(false)}
                 >
-                    <View style={styles.optionsContainer}>
-                        <Text style={styles.optionsTitle}>{selectedProject?.name}</Text>
+                    <View style={[styles.optionsContainer, { backgroundColor: colors.card }]}>
+                        <Text style={[styles.optionsTitle, { color: colors.textSecondary }]}>{selectedProject?.name}</Text>
 
-                        <TouchableOpacity style={styles.optionItem} onPress={handleArchiveProject}>
-                            <Archive size={20} color="#64748B" />
-                            <Text style={styles.optionText}>
+                        <TouchableOpacity style={[styles.optionItem, { borderBottomColor: colors.border }]} onPress={handleArchiveProject}>
+                            <Archive size={20} color={colors.textSecondary} />
+                            <Text style={[styles.optionText, { color: colors.text }]}>
                                 {selectedProject?.is_archived ? 'Restore Project' : 'Archive Project'}
                             </Text>
                         </TouchableOpacity>
@@ -758,197 +1037,220 @@ export default function Projects() {
 }
 
 const styles = StyleSheet.create({
+    // ─── Layout ───
     container: {
         flex: 1,
-        backgroundColor: '#F8FAFC',
     },
     header: {
-        flexDirection: 'row',
-        paddingHorizontal: 16,
-        paddingBottom: 16,
-        gap: 12,
-        marginTop: 16,
+        paddingHorizontal: HORIZONTAL_PAD,
+        paddingBottom: 12,
+        gap: 14,
     },
-    searchContainer: {
-        flex: 1,
+    titleRow: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: '#FFFFFF',
-        borderRadius: 12,
-        paddingHorizontal: 12,
-        height: 44,
-        borderWidth: 1,
-        borderColor: '#E2E8F0',
+        justifyContent: 'space-between',
     },
-    searchInput: {
-        flex: 1,
-        marginLeft: 8,
-        fontSize: 14,
-        color: '#0F172A',
+    pageTitle: {
+        fontSize: 28,
+        fontWeight: '800',
+        letterSpacing: -0.6,
+    },
+    pageSubtitle: {
+        fontSize: 13,
+        fontWeight: '500',
+        marginTop: 2,
+        opacity: 0.6,
+    },
+    headerActions: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 10,
     },
     archiveToggle: {
-        width: 44,
-        height: 44,
+        width: 38,
+        height: 38,
         borderRadius: 12,
-        backgroundColor: '#FFFFFF',
         alignItems: 'center',
         justifyContent: 'center',
         borderWidth: 1,
-        borderColor: '#E2E8F0',
     },
-    archiveToggleActive: {
-        backgroundColor: '#64748B',
-        borderColor: '#64748B',
+    addProjectBtn: {
+        width: 38,
+        height: 38,
+        borderRadius: 12,
+        alignItems: 'center',
+        justifyContent: 'center',
     },
-    scrollContent: {
-        padding: 16,
-        paddingTop: 0,
-        paddingBottom: 80,
-    },
-    grid: {
+
+    // ─── Search ───
+    searchBar: {
         flexDirection: 'row',
-        flexWrap: 'wrap',
+        alignItems: 'center',
+        height: 48,
+        borderRadius: 16,
+        paddingHorizontal: 16,
+        gap: 10,
+        borderWidth: 1,
+    },
+    searchInput: {
+        flex: 1,
+        fontSize: 15,
+        paddingVertical: 0,
+    },
+
+    // ─── Scroll ───
+    scrollContent: {
+        paddingHorizontal: HORIZONTAL_PAD,
+        paddingTop: 8,
+        paddingBottom: 100,
+    },
+
+    // ─── Cards (single column) ───
+    cardList: {
         gap: 12,
     },
     card: {
-        width: (width - 44) / 2,
-        backgroundColor: '#FFFFFF',
+        flexDirection: 'row',
         borderRadius: 16,
-        padding: 16,
-        paddingTop: 20,
         borderWidth: 1,
-        borderColor: '#E2E8F0',
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.05,
-        shadowRadius: 4,
-        elevation: 2,
-        marginBottom: 4,
-        position: 'relative',
         overflow: 'hidden',
     },
-    colorBar: {
-        position: 'absolute',
-        top: 0,
-        left: 0,
-        right: 0,
-        height: 4,
+    cardAccent: {
+        width: 4,
     },
-    cardHeader: {
+    cardBody: {
+        flex: 1,
+        paddingVertical: 14,
+        paddingHorizontal: 16,
+        gap: 12,
+    },
+    cardTopRow: {
         flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'flex-start',
-        marginBottom: 12,
+        alignItems: 'center',
+        gap: 12,
     },
-    iconContainer: {
+    cardIcon: {
         width: 36,
         height: 36,
         borderRadius: 10,
         alignItems: 'center',
         justifyContent: 'center',
     },
+    cardTitleWrap: {
+        flex: 1,
+    },
     cardTitle: {
         fontSize: 16,
-        fontWeight: '700',
-        color: '#0F172A',
-        marginBottom: 4,
+        fontWeight: '600',
+        letterSpacing: -0.2,
     },
     cardDesc: {
-        fontSize: 12,
-        color: '#64748B',
-        marginBottom: 16,
-        height: 32,
+        fontSize: 13,
+        marginTop: 2,
+        opacity: 0.65,
     },
-    progressContainer: {
-        gap: 6,
-    },
-    progressHeader: {
+    cardBottomRow: {
         flexDirection: 'row',
-        justifyContent: 'space-between',
         alignItems: 'center',
+        justifyContent: 'space-between',
     },
-    progressText: {
-        fontSize: 12,
-        color: '#64748B',
-        fontWeight: '500',
+    chipRow: {
+        flexDirection: 'row',
+        gap: 8,
     },
-    progressPercent: {
+    chip: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+        paddingHorizontal: 8,
+        paddingVertical: 4,
+        borderRadius: 8,
+    },
+    chipText: {
+        fontSize: 11,
+        fontWeight: '600',
+    },
+    progressWrap: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+    },
+    progressTrack: {
+        width: 48,
+        height: 4,
+        borderRadius: 2,
+        overflow: 'hidden',
+    },
+    progressFill: {
+        height: '100%',
+        borderRadius: 2,
+    },
+    progressPct: {
         fontSize: 12,
         fontWeight: '700',
     },
-    progressBarBg: {
-        height: 6,
-        backgroundColor: '#F1F5F9',
-        borderRadius: 3,
-        overflow: 'hidden',
-    },
-    progressBarFill: {
-        height: '100%',
-        borderRadius: 3,
-    },
+
+    // ─── FAB ───
     fab: {
         position: 'absolute',
-        bottom: 24,
-        right: 24,
+        bottom: 28,
+        right: HORIZONTAL_PAD,
         width: 56,
         height: 56,
-        borderRadius: 28,
-        backgroundColor: '#F97316',
+        borderRadius: 16,
         alignItems: 'center',
         justifyContent: 'center',
         zIndex: 50,
-        elevation: 8,
-        shadowColor: '#F97316',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.3,
-        shadowRadius: 8,
     },
-    centerParams: {
+
+    // ─── States ───
+    centerState: {
         alignItems: 'center',
         justifyContent: 'center',
-        marginTop: 60,
+        paddingTop: 100,
+        gap: 12,
     },
     loadingText: {
-        marginTop: 12,
-        color: '#64748B',
         fontSize: 14,
+        fontWeight: '500',
     },
     emptyState: {
         alignItems: 'center',
-        justifyContent: 'center',
-        marginTop: 60,
+        paddingTop: 80,
         paddingHorizontal: 32,
     },
     emptyIconBg: {
-        width: 80,
-        height: 80,
+        width: 88,
+        height: 88,
         borderRadius: 24,
-        backgroundColor: '#FFF7ED',
         alignItems: 'center',
         justifyContent: 'center',
-        marginBottom: 16,
+        marginBottom: 20,
     },
     emptyTitle: {
-        fontSize: 18,
+        fontSize: 20,
         fontWeight: '700',
-        color: '#0F172A',
         marginBottom: 8,
     },
     emptyDesc: {
         fontSize: 14,
-        color: '#64748B',
         textAlign: 'center',
-        marginBottom: 24,
+        lineHeight: 20,
+        marginBottom: 28,
     },
-    createButtonEmpty: {
-        backgroundColor: '#F97316',
-        paddingHorizontal: 20,
-        paddingVertical: 12,
-        borderRadius: 12,
+    createBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 10,
+        paddingHorizontal: 24,
+        paddingVertical: 14,
+        borderRadius: 14,
     },
-    createButtonText: {
+    createBtnText: {
         color: '#FFFFFF',
-        fontWeight: '600',
+        fontSize: 15,
+        fontWeight: '700',
     },
     // Modal Styles
     modalOverlay: {
@@ -970,14 +1272,37 @@ const styles = StyleSheet.create({
     },
     modalHeader: {
         flexDirection: 'row',
-        justifyContent: 'space-between',
         alignItems: 'center',
-        marginBottom: 20,
+        marginBottom: 16,
+        paddingBottom: 16,
+        borderBottomWidth: 1,
     },
     modalTitle: {
-        fontSize: 20,
-        fontWeight: '700',
-        color: '#0F172A',
+        fontSize: 18,
+        fontWeight: '800',
+        letterSpacing: -0.3,
+    },
+    modalCloseBtn: {
+        width: 34,
+        height: 34,
+        borderRadius: 10,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    stepDot: {
+        width: 8,
+        height: 8,
+        borderRadius: 4,
+    },
+    stepLine: {
+        width: 20,
+        height: 2,
+        borderRadius: 1,
+    },
+    modalFooter: {
+        paddingTop: 16,
+        marginTop: 4,
+        borderTopWidth: 1,
     },
     closeText: {
         color: '#64748B',
@@ -1010,20 +1335,19 @@ const styles = StyleSheet.create({
     },
     submitButton: {
         height: 48,
-        backgroundColor: '#F97316',
-        borderRadius: 12,
+        borderRadius: 14,
         alignItems: 'center',
         justifyContent: 'center',
-        marginTop: 8,
+        flexDirection: 'row',
+        gap: 8,
     },
     submitButtonDisabled: {
-        backgroundColor: '#94A3B8',
-        opacity: 0.7,
+        opacity: 0.5,
     },
     submitButtonText: {
         color: '#FFFFFF',
         fontWeight: '700',
-        fontSize: 16,
+        fontSize: 15,
     },
     // Template Styles
     templateScroll: {
@@ -1031,18 +1355,26 @@ const styles = StyleSheet.create({
         marginBottom: 8,
     },
     templateCard: {
-        width: 140,
+        width: 110,
         padding: 12,
-        borderRadius: 12,
-        borderWidth: 1,
-        borderColor: '#E2E8F0',
+        borderRadius: 14,
+        borderWidth: 1.5,
         marginRight: 10,
         alignItems: 'center',
-        backgroundColor: '#FFFFFF',
+        position: 'relative',
     },
     templateCardActive: {
-        backgroundColor: '#F8FAFC',
         borderWidth: 2,
+    },
+    templateCheck: {
+        position: 'absolute',
+        top: 6,
+        right: 6,
+        width: 18,
+        height: 18,
+        borderRadius: 9,
+        alignItems: 'center',
+        justifyContent: 'center',
     },
     templateIcon: {
         width: 40,
@@ -1053,22 +1385,23 @@ const styles = StyleSheet.create({
         marginBottom: 8,
     },
     templateName: {
-        fontSize: 12,
-        fontWeight: '600',
+        fontSize: 13,
+        fontWeight: '700',
         color: '#334155',
         textAlign: 'center',
+        lineHeight: 17,
     },
     templateBadge: {
-        marginTop: 6,
-        paddingHorizontal: 8,
-        paddingVertical: 2,
+        marginTop: 4,
+        paddingHorizontal: 6,
+        paddingVertical: 1,
         backgroundColor: '#F1F5F9',
-        borderRadius: 8,
+        borderRadius: 6,
     },
     templateBadgeText: {
-        fontSize: 10,
-        fontWeight: '600',
-        color: '#64748B',
+        fontSize: 9,
+        fontWeight: '500',
+        color: '#94A3B8',
     },
     // Status Edit Styles
     sectionHeader: {
@@ -1082,14 +1415,13 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         gap: 4,
-        padding: 6,
+        paddingHorizontal: 10,
+        paddingVertical: 5,
         borderRadius: 8,
-        backgroundColor: '#FFF7ED',
     },
     addStatusText: {
         fontSize: 12,
         fontWeight: '600',
-        color: '#F97316',
     },
     statusList: {
         gap: 8,
@@ -1101,12 +1433,10 @@ const styles = StyleSheet.create({
     statusItem: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 10,
-        backgroundColor: '#F8FAFC',
+        gap: 8,
         padding: 8,
         borderRadius: 10,
         borderWidth: 1,
-        borderColor: '#E2E8F0',
     },
     reorderButtons: {
         flexDirection: 'column',
@@ -1118,42 +1448,48 @@ const styles = StyleSheet.create({
     },
     statusInput: {
         flex: 1,
-        fontSize: 14,
-        color: '#0F172A',
+        fontSize: 13,
         fontWeight: '500',
         padding: 0,
     },
     statusToggle: {
-        width: 24,
-        height: 24,
+        width: 22,
+        height: 22,
         borderRadius: 6,
         borderWidth: 1,
-        borderColor: '#E2E8F0',
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: '#FFFFFF',
     },
     statusToggleDone: {
         backgroundColor: '#22C55E',
         borderColor: '#22C55E',
+    },
+    categoryPill: {
+        paddingHorizontal: 7,
+        paddingVertical: 3,
+        borderRadius: 6,
+        borderWidth: 1,
+    },
+    categoryPillText: {
+        fontSize: 9,
+        fontWeight: '700',
+        letterSpacing: 0.3,
     },
     colorPalette: {
         flexDirection: 'row',
         flexWrap: 'wrap',
         gap: 8,
         padding: 10,
-        backgroundColor: '#FFFFFF',
         marginTop: 4,
         borderRadius: 10,
         borderWidth: 1,
-        borderColor: '#E2E8F0',
         justifyContent: 'center',
     },
     paletteColor: {
-        width: 20,
-        height: 20,
-        borderRadius: 10,
-        borderWidth: 2,
+        width: 22,
+        height: 22,
+        borderRadius: 11,
+        borderWidth: 2.5,
         borderColor: 'transparent',
     },
     paletteColorActive: {

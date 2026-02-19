@@ -1,5 +1,5 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
-import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
+import { DarkTheme, DefaultTheme, ThemeProvider as NavThemeProvider } from '@react-navigation/native';
 import { useFonts } from 'expo-font';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
@@ -11,6 +11,7 @@ import { View, ActivityIndicator } from 'react-native';
 import { supabase } from '@/lib/supabase';
 import { FirstLoginPasswordPrompt } from '@/components/FirstLoginPasswordPrompt';
 import { WorkspaceProvider } from '@/hooks/useWorkspace';
+import { ThemeProvider } from '@/contexts/ThemeContext';
 
 import { useColorScheme } from '@/components/useColorScheme';
 
@@ -168,15 +169,16 @@ function RootLayoutNav() {
 
   if (authLoading) {
     return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: 'white' }}>
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
         <ActivityIndicator size="large" color="#FF5C00" />
       </View>
     );
   }
 
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <WorkspaceProvider>
+    <ThemeProvider>
+      <NavThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+        <WorkspaceProvider>
         <FirstLoginPasswordPrompt
           visible={showPasswordPrompt}
           onComplete={() => setShowPasswordPrompt(false)}
@@ -199,6 +201,7 @@ function RootLayoutNav() {
           <Stack.Screen name="modal" options={{ presentation: 'modal', gestureEnabled: true, fullScreenGestureEnabled: true }} />
         </Stack>
       </WorkspaceProvider>
+    </NavThemeProvider>
     </ThemeProvider>
   );
 }

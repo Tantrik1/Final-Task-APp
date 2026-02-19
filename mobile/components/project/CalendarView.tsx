@@ -31,6 +31,7 @@ import {
     isPast,
 } from 'date-fns';
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
+import { useTheme } from '@/contexts/ThemeContext';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const DAY_SIZE = (SCREEN_WIDTH - 32 - 12) / 7; // 16px padding each side, 2px gaps
@@ -54,6 +55,7 @@ interface Status {
     position: number;
     is_default: boolean;
     is_completed: boolean;
+    category?: 'todo' | 'active' | 'done' | 'cancelled';
 }
 
 interface CalendarViewProps {
@@ -75,6 +77,7 @@ const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 export default function CalendarView({ tasks, statuses, onToggleComplete, projectId, projectColor }: CalendarViewProps) {
     const router = useRouter();
+    const { colors } = useTheme();
     const [currentMonth, setCurrentMonth] = useState(new Date());
     const [selectedDate, setSelectedDate] = useState<Date | null>(new Date());
 
@@ -147,17 +150,18 @@ export default function CalendarView({ tasks, statuses, onToggleComplete, projec
                 key={dateKey}
                 style={[
                     styles.dayCell,
-                    isSelected && styles.dayCellSelected,
-                    isTodayDate && !isSelected && styles.dayCellToday,
+                    isSelected && { backgroundColor: projectColor },
+                    isTodayDate && !isSelected && { backgroundColor: projectColor + '15' },
                 ]}
                 onPress={() => setSelectedDate(day)}
                 activeOpacity={0.6}
             >
                 <Text style={[
                     styles.dayText,
-                    !isCurrentMonth && styles.dayTextMuted,
-                    isSelected && styles.dayTextSelected,
-                    isTodayDate && !isSelected && styles.dayTextToday,
+                    { color: colors.text },
+                    !isCurrentMonth && { color: colors.textTertiary, opacity: 0.4 },
+                    isSelected && { color: '#FFFFFF', fontWeight: '700' },
+                    isTodayDate && !isSelected && { color: projectColor, fontWeight: '700' },
                 ]}>
                     {format(day, 'd')}
                 </Text>
@@ -192,22 +196,22 @@ export default function CalendarView({ tasks, statuses, onToggleComplete, projec
         return (
             <Animated.View key={task.id} entering={FadeInDown.delay(index * 40).duration(250)}>
                 <TouchableOpacity
-                    style={[styles.taskItem, isCompleted && styles.taskItemCompleted]}
+                    style={[styles.taskItem, { backgroundColor: colors.card, borderColor: colors.border }, isCompleted && styles.taskItemCompleted]}
                     onPress={() => router.push(`/task/${task.id}` as any)}
                     activeOpacity={0.6}
                 >
                     <TouchableOpacity
-                        style={[styles.checkbox, isCompleted && styles.checkboxDone]}
+                        style={[styles.checkbox, { borderColor: colors.border }, isCompleted && styles.checkboxDone]}
                         onPress={() => onToggleComplete(task)}
                         hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                     >
                         {isCompleted && <CheckSquare size={10} color="#FFF" />}
                     </TouchableOpacity>
 
-                    <View style={[styles.taskColorBar, { backgroundColor: status?.color || '#94A3B8' }]} />
+                    <View style={[styles.taskColorBar, { backgroundColor: status?.color || colors.textTertiary }]} />
 
                     <View style={styles.taskContent}>
-                        <Text style={[styles.taskTitle, isCompleted && styles.taskTitleDone]} numberOfLines={1}>
+                        <Text style={[styles.taskTitle, { color: colors.text }, isCompleted && styles.taskTitleDone]} numberOfLines={1}>
                             {task.title}
                         </Text>
                         <View style={styles.taskMeta}>
@@ -219,8 +223,8 @@ export default function CalendarView({ tasks, statuses, onToggleComplete, projec
                     </View>
 
                     {task.assignee && (
-                        <View style={styles.miniAvatar}>
-                            <Text style={styles.miniAvatarText}>
+                        <View style={[styles.miniAvatar, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                            <Text style={[styles.miniAvatarText, { color: colors.textSecondary }]}>
                                 {task.assignee.full_name?.charAt(0)?.toUpperCase() || '?'}
                             </Text>
                         </View>
@@ -234,14 +238,14 @@ export default function CalendarView({ tasks, statuses, onToggleComplete, projec
         <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
             {/* Month navigation */}
             <View style={styles.monthNav}>
-                <TouchableOpacity onPress={goToPrevMonth} style={styles.navBtn}>
-                    <ChevronLeft size={20} color="#64748B" />
+                <TouchableOpacity onPress={goToPrevMonth} style={[styles.navBtn, { backgroundColor: colors.surface }]}>
+                    <ChevronLeft size={20} color={colors.textSecondary} />
                 </TouchableOpacity>
                 <TouchableOpacity onPress={goToToday}>
-                    <Text style={styles.monthTitle}>{format(currentMonth, 'MMMM yyyy')}</Text>
+                    <Text style={[styles.monthTitle, { color: colors.text }]}>{format(currentMonth, 'MMMM yyyy')}</Text>
                 </TouchableOpacity>
-                <TouchableOpacity onPress={goToNextMonth} style={styles.navBtn}>
-                    <ChevronRight size={20} color="#64748B" />
+                <TouchableOpacity onPress={goToNextMonth} style={[styles.navBtn, { backgroundColor: colors.surface }]}>
+                    <ChevronRight size={20} color={colors.textSecondary} />
                 </TouchableOpacity>
             </View>
 
@@ -249,7 +253,7 @@ export default function CalendarView({ tasks, statuses, onToggleComplete, projec
             <View style={styles.weekdayRow}>
                 {WEEKDAYS.map(d => (
                     <View key={d} style={styles.weekdayCell}>
-                        <Text style={styles.weekdayText}>{d}</Text>
+                        <Text style={[styles.weekdayText, { color: colors.textTertiary }]}>{d}</Text>
                     </View>
                 ))}
             </View>
@@ -264,7 +268,7 @@ export default function CalendarView({ tasks, statuses, onToggleComplete, projec
                 <Animated.View entering={FadeIn.duration(200)} style={styles.selectedSection}>
                     <View style={styles.selectedHeader}>
                         <CalendarIcon size={16} color={projectColor} />
-                        <Text style={styles.selectedTitle}>
+                        <Text style={[styles.selectedTitle, { color: colors.text }]}>
                             {isToday(selectedDate) ? 'Today' : format(selectedDate, 'EEEE, MMM d')}
                         </Text>
                         <View style={[styles.selectedBadge, { backgroundColor: projectColor + '15' }]}>
@@ -275,8 +279,8 @@ export default function CalendarView({ tasks, statuses, onToggleComplete, projec
                     </View>
 
                     {selectedDateTasks.length === 0 ? (
-                        <View style={styles.emptyDay}>
-                            <Text style={styles.emptyDayText}>No tasks due on this day</Text>
+                        <View style={[styles.emptyDay, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                            <Text style={[styles.emptyDayText, { color: colors.textTertiary }]}>No tasks due on this day</Text>
                         </View>
                     ) : (
                         <View style={styles.taskList}>
@@ -290,10 +294,10 @@ export default function CalendarView({ tasks, statuses, onToggleComplete, projec
             {unscheduledTasks.length > 0 && (
                 <View style={styles.unscheduledSection}>
                     <View style={styles.selectedHeader}>
-                        <Flag size={16} color="#94A3B8" />
-                        <Text style={styles.selectedTitle}>Unscheduled</Text>
-                        <View style={[styles.selectedBadge, { backgroundColor: '#F1F5F9' }]}>
-                            <Text style={[styles.selectedBadgeText, { color: '#94A3B8' }]}>
+                        <Flag size={16} color={colors.textTertiary} />
+                        <Text style={[styles.selectedTitle, { color: colors.text }]}>Unscheduled</Text>
+                        <View style={[styles.selectedBadge, { backgroundColor: colors.surface }]}>
+                            <Text style={[styles.selectedBadgeText, { color: colors.textTertiary }]}>
                                 {unscheduledTasks.length}
                             </Text>
                         </View>

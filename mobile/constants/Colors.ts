@@ -1,19 +1,23 @@
-const tintColorLight = '#2f95dc';
-const tintColorDark = '#fff';
+// Re-export colors from ThemeContext for backward compatibility
+export { Colors } from '@/contexts/ThemeContext';
+
+// Legacy exports for compatibility
+const tintColorLight = '#4338CA';
+const tintColorDark = '#6366F1';
 
 export default {
   light: {
-    text: '#000',
-    background: '#fff',
+    text: '#1E293B',
+    background: '#FFFFFF',
     tint: tintColorLight,
-    tabIconDefault: '#ccc',
+    tabIconDefault: '#94A3B8',
     tabIconSelected: tintColorLight,
   },
   dark: {
-    text: '#fff',
-    background: '#000',
+    text: '#F8FAFC',
+    background: '#0F172A',
     tint: tintColorDark,
-    tabIconDefault: '#ccc',
+    tabIconDefault: '#64748B',
     tabIconSelected: tintColorDark,
   },
 };

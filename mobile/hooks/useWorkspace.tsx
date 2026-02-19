@@ -8,7 +8,6 @@ export type Workspace = {
     id: string;
     created_at: string;
     name: string;
-    slug: string;
     logo_url: string | null;
     description: string | null;
     created_by: string | null;

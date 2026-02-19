@@ -17,6 +17,7 @@ import {
 } from 'lucide-react-native';
 import { format, isPast, isToday } from 'date-fns';
 import Animated, { FadeInDown } from 'react-native-reanimated';
+import { useTheme } from '@/contexts/ThemeContext';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const COLUMN_WIDTH = SCREEN_WIDTH * 0.75;
@@ -41,6 +42,7 @@ interface Status {
     position: number;
     is_default: boolean;
     is_completed: boolean;
+    category?: 'todo' | 'active' | 'done' | 'cancelled';
 }
 
 interface KanbanViewProps {
@@ -61,6 +63,7 @@ const PRIORITY_CONFIG: Record<string, { color: string; bg: string; label: string
 
 export default function KanbanView({ tasks, statuses, onToggleComplete, projectId, projectColor, onAddTask }: KanbanViewProps) {
     const router = useRouter();
+    const { colors } = useTheme();
     const scrollRef = useRef<ScrollView>(null);
 
     const handleAddTask = () => {
@@ -88,7 +91,7 @@ export default function KanbanView({ tasks, statuses, onToggleComplete, projectI
         const matchedStatus = task.custom_status_id
             ? statuses.find(s => s.id === task.custom_status_id)
             : null;
-        const isCompleted = matchedStatus?.is_completed || false;
+        const isCompleted = matchedStatus?.category === 'done' || matchedStatus?.category === 'cancelled' || matchedStatus?.is_completed || false;
 
         return (
             <Animated.View
@@ -96,7 +99,7 @@ export default function KanbanView({ tasks, statuses, onToggleComplete, projectI
                 entering={FadeInDown.delay(index * 50).duration(300).springify()}
             >
                 <TouchableOpacity
-                    style={[styles.card, isCompleted && styles.cardCompleted]}
+                    style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }, isCompleted && styles.cardCompleted]}
                     onPress={() => router.push(`/task/${task.id}` as any)}
                     activeOpacity={0.7}
                 >
@@ -106,14 +109,14 @@ export default function KanbanView({ tasks, statuses, onToggleComplete, projectI
                     <View style={styles.cardBody}>
                         {/* Title row */}
                         <View style={styles.cardTitleRow}>
-                            <Text style={[styles.cardTitle, isCompleted && styles.cardTitleDone]} numberOfLines={2}>
+                            <Text style={[styles.cardTitle, { color: colors.text }, isCompleted && styles.cardTitleDone]} numberOfLines={2}>
                                 {task.title}
                             </Text>
                         </View>
 
                         {/* Description preview */}
                         {!!task.description && !isCompleted && (
-                            <Text style={styles.cardDesc} numberOfLines={1}>
+                            <Text style={[styles.cardDesc, { color: colors.textTertiary }]} numberOfLines={1}>
                                 {task.description}
                             </Text>
                         )}
@@ -147,8 +150,8 @@ export default function KanbanView({ tasks, statuses, onToggleComplete, projectI
 
                             {/* Assignee avatar */}
                             {task.assignee && (
-                                <View style={styles.cardAvatar}>
-                                    <Text style={styles.cardAvatarText}>
+                                <View style={[styles.cardAvatar, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                                    <Text style={[styles.cardAvatarText, { color: colors.textSecondary }]}>
                                         {task.assignee.full_name?.charAt(0)?.toUpperCase() || '?'}
                                     </Text>
                                 </View>
@@ -165,11 +168,11 @@ export default function KanbanView({ tasks, statuses, onToggleComplete, projectI
         const completedCount = columnTasks.length;
 
         return (
-            <View key={status.id} style={styles.column}>
+            <View key={status.id} style={[styles.column, { backgroundColor: colors.surface, borderColor: colors.border }]}>
                 {/* Column header */}
-                <View style={styles.columnHeader}>
+                <View style={[styles.columnHeader, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
                     <View style={[styles.columnDot, { backgroundColor: status.color }]} />
-                    <Text style={styles.columnTitle}>{status.name}</Text>
+                    <Text style={[styles.columnTitle, { color: colors.text }]}>{status.name}</Text>
                     <View style={[styles.columnBadge, { backgroundColor: status.color + '20' }]}>
                         <Text style={[styles.columnBadgeText, { color: status.color }]}>{completedCount}</Text>
                     </View>
@@ -184,24 +187,24 @@ export default function KanbanView({ tasks, statuses, onToggleComplete, projectI
                 >
                     {columnTasks.length === 0 ? (
                         <View style={styles.emptyColumn}>
-                            <Text style={styles.emptyColumnText}>No tasks</Text>
+                            <Text style={[styles.emptyColumnText, { color: colors.textTertiary }]}>No tasks</Text>
                             <TouchableOpacity
-                                style={styles.addTaskMini}
+                                style={[styles.addTaskMini, { borderColor: colors.border }]}
                                 onPress={handleAddTask}
                             >
-                                <Plus size={14} color="#94A3B8" />
-                                <Text style={styles.addTaskMiniText}>Add task</Text>
+                                <Plus size={14} color={colors.textTertiary} />
+                                <Text style={[styles.addTaskMiniText, { color: colors.textTertiary }]}>Add task</Text>
                             </TouchableOpacity>
                         </View>
                     ) : (
                         <>
                             {columnTasks.map((task, index) => renderCard(task, index))}
                             <TouchableOpacity
-                                style={styles.addCardBtn}
+                                style={[styles.addCardBtn, { borderColor: colors.border }]}
                                 onPress={handleAddTask}
                             >
-                                <Plus size={14} color="#94A3B8" />
-                                <Text style={styles.addCardText}>Add task</Text>
+                                <Plus size={14} color={colors.textTertiary} />
+                                <Text style={[styles.addCardText, { color: colors.textTertiary }]}>Add task</Text>
                             </TouchableOpacity>
                         </>
                     )}
@@ -213,7 +216,7 @@ export default function KanbanView({ tasks, statuses, onToggleComplete, projectI
     if (statuses.length === 0) {
         return (
             <View style={styles.emptyState}>
-                <Text style={styles.emptyStateText}>No statuses configured for this project</Text>
+                <Text style={[styles.emptyStateText, { color: colors.textSecondary }]}>No statuses configured for this project</Text>
             </View>
         );
     }

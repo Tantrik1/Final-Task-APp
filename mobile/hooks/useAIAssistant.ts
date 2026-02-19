@@ -34,7 +34,8 @@ export type SmartButtonAction =
     | 'open_project' | 'open_task' | 'open_member'
     | 'view_overdue' | 'undo_last_action' | 'confirm_bulk'
     | 'reschedule_overdue' | 'add_tasks' | 'change_priority'
-    | 'start_timer' | 'suggest_redistribution' | 'notify_members';
+    | 'start_timer' | 'suggest_redistribution' | 'notify_members'
+    | 'speak';
 
 export interface SmartButton {
     label: string;
@@ -42,6 +43,7 @@ export interface SmartButton {
     id?: string;
     icon?: string;
     data?: any;
+    text?: string;
     variant?: 'primary' | 'secondary' | 'danger' | 'success';
 }
 
@@ -54,7 +56,7 @@ type ToolType =
     | 'create_task' | 'update_task' | 'create_project' | 'update_project'
     | 'invite_member' | 'reassign_task' | 'change_member_role'
     | 'get_tasks_due_soon' | 'get_time_tracking' | 'get_task_comments'
-    | 'manage_project_status' | 'delete_task';
+    | 'manage_project_status' | 'delete_task' | 'add_comment';
 
 // ─── Tool Definitions ─────────────────────────────────────────────────────────
 
@@ -66,7 +68,7 @@ const TOOLS = [
             type: 'object',
             properties: {
                 query: { type: 'string', description: 'Search term for task title' },
-                status: { type: 'string', enum: ['todo', 'in_progress', 'done'], description: 'Filter by status' },
+                status: { type: 'string', enum: ['todo', 'in_progress', 'review', 'done'], description: 'Filter by status' },
                 priority: { type: 'string', enum: ['low', 'medium', 'high', 'urgent'], description: 'Filter by priority' },
                 assignee_name: { type: 'string', description: 'Filter by assignee full name' },
                 project_name: { type: 'string', description: 'Filter by project name' },
@@ -151,8 +153,8 @@ const TOOLS = [
             type: 'object',
             properties: {
                 task_ids: { type: 'array', items: { type: 'string' }, description: 'Array of task IDs to update' },
-                status: { type: 'string', description: 'New status to set' },
-                priority: { type: 'string', description: 'New priority to set' },
+                status: { type: 'string', enum: ['todo', 'in_progress', 'review', 'done'], description: 'New status to set' },
+                priority: { type: 'string', enum: ['low', 'medium', 'high', 'urgent'], description: 'New priority to set' },
                 due_date: { type: 'string', description: 'New due date (YYYY-MM-DD)' },
             },
             required: ['task_ids'],
@@ -192,16 +194,17 @@ const TOOLS = [
     },
     {
         name: 'update_task',
-        description: 'Update an existing task: status, priority, due date, assignee, or title.',
+        description: 'Update an existing task: status, priority, due date, assignee, title, or description.',
         parameters: {
             type: 'object',
             properties: {
                 task_name: { type: 'string', description: 'Name of the task to update' },
-                new_status: { type: 'string', description: 'New status' },
-                new_priority: { type: 'string', description: 'New priority' },
+                new_status: { type: 'string', enum: ['todo', 'in_progress', 'review', 'done'], description: 'New status' },
+                new_priority: { type: 'string', enum: ['low', 'medium', 'high', 'urgent'], description: 'New priority' },
                 new_due_date: { type: 'string', description: 'New due date (YYYY-MM-DD)' },
                 new_assignee_name: { type: 'string', description: 'New assignee name' },
                 new_title: { type: 'string', description: 'New title' },
+                new_description: { type: 'string', description: 'New task description text' },
             },
             required: ['task_name'],
             additionalProperties: false,
@@ -223,7 +226,7 @@ const TOOLS = [
     },
     {
         name: 'update_project',
-        description: 'Rename or update description/color of an existing project.',
+        description: 'Rename, update, archive, or unarchive an existing project.',
         parameters: {
             type: 'object',
             properties: {
@@ -231,6 +234,7 @@ const TOOLS = [
                 new_name: { type: 'string', description: 'New project name' },
                 new_description: { type: 'string', description: 'New description' },
                 new_color: { type: 'string', description: 'New hex color' },
+                is_archived: { type: 'boolean', description: 'Set true to archive, false to unarchive' },
             },
             required: ['project_name'],
             additionalProperties: false,
@@ -316,7 +320,7 @@ const TOOLS = [
     },
     {
         name: 'manage_project_status',
-        description: 'Add, rename, or list custom statuses on a project (e.g. Client Review, QA).',
+        description: 'Add, rename, or list custom statuses on a project. Category determines behavior: todo (default for new tasks), active (in progress), done (completed — only 1 allowed), cancelled (closed — only 1 allowed).',
         parameters: {
             type: 'object',
             properties: {
@@ -325,7 +329,7 @@ const TOOLS = [
                 status_name: { type: 'string', description: 'Status name (for add/rename)' },
                 new_name: { type: 'string', description: 'New name (for rename)' },
                 color: { type: 'string', description: 'Hex color for new status' },
-                is_completed: { type: 'boolean', description: 'Whether this status means task is done' },
+                category: { type: 'string', enum: ['todo', 'active', 'done', 'cancelled'], description: 'Status category. Only 1 done and 1 cancelled allowed per project.' },
             },
             required: ['project_name', 'action'],
             additionalProperties: false,
@@ -340,6 +344,19 @@ const TOOLS = [
                 task_name: { type: 'string', description: 'Task to delete' },
             },
             required: ['task_name'],
+            additionalProperties: false,
+        },
+    },
+    {
+        name: 'add_comment',
+        description: 'Add a comment to a task. Use for leaving notes, updates, or feedback.',
+        parameters: {
+            type: 'object',
+            properties: {
+                task_name: { type: 'string', description: 'Task to comment on' },
+                content: { type: 'string', description: 'Comment text content' },
+            },
+            required: ['task_name', 'content'],
             additionalProperties: false,
         },
     },
@@ -359,11 +376,15 @@ interface WsContext {
 }
 
 async function buildWsContext(wsId: string): Promise<WsContext> {
+    if (__DEV__) console.log('[HamroAI] Building workspace context for wsId:', wsId);
+    
     const { data: projs } = await supabase.from('projects').select('id, name').eq('workspace_id', wsId).eq('is_archived', false);
     const projects = (projs || []) as { id: string; name: string }[];
     const projectIds = projects.map(p => p.id);
     const projectMap: Record<string, string> = {};
     projects.forEach(p => { projectMap[p.id] = p.name; });
+
+    if (__DEV__) console.log('[HamroAI] Found projects:', projects.length, 'IDs:', projectIds);
 
     const { data: ms } = await supabase.from('workspace_members').select('user_id, role').eq('workspace_id', wsId);
     const memberIds = ms?.map((m: any) => m.user_id) || [];
@@ -376,6 +397,8 @@ async function buildWsContext(wsId: string): Promise<WsContext> {
     const members = (profs || []) as { id: string; full_name: string; email: string }[];
     const profileMap: Record<string, string> = {};
     members.forEach(m => { profileMap[m.id] = m.full_name; });
+
+    if (__DEV__) console.log('[HamroAI] Found members:', members.length);
 
     return { wsId, projects, projectIds, projectMap, memberIds, members, memberRoles, profileMap };
 }
@@ -410,21 +433,48 @@ async function executeToolCall(name: ToolType, args: any, ctx: WsContext, userId
     switch (name) {
 
         case 'search_tasks': {
+            // Debug: Log context and search parameters
+            if (__DEV__) {
+                console.log('[HamroAI] search_tasks called with args:', args);
+                console.log('[HamroAI] Workspace context - projects:', ctx.projects.length, 'members:', Object.keys(ctx.memberRoles).length);
+                console.log('[HamroAI] Project IDs from context:', projectIds);
+            }
+            
             let pIds = [...projectIds];
             if (args.project_name) {
                 const filtered = ctx.projects.filter(p => p.name.toLowerCase().includes(args.project_name.toLowerCase()));
                 if (filtered.length) pIds = filtered.map(p => p.id);
+                if (__DEV__) console.log('[HamroAI] After project_name filter, pIds:', pIds);
             }
-            if (!pIds.length) return { tasks: [] };
-            let q = supabase.from('tasks').select('title, status, priority, due_date, assigned_to, project_id').in('project_id', pIds);
-            if (args.query) q = q.ilike('title', `%${args.query}%`);
+            
+            if (!pIds.length) {
+                if (__DEV__) console.log('[HamroAI] No project IDs available for search');
+                return { tasks: [], message: 'No projects found in workspace.' };
+            }
+            
+            let q = supabase.from('tasks').select('id, title, status, priority, due_date, assigned_to, project_id').in('project_id', pIds);
+            // Use full-text search for better performance on large datasets
+            if (args.query) {
+                q = q.textSearch('search_vector', args.query, { type: 'websearch', config: 'english' });
+            }
             if (args.status) q = q.eq('status', args.status);
             if (args.priority) q = q.eq('priority', args.priority);
             if (args.overdue_only) { q = (q as any).lt('due_date', new Date().toISOString().split('T')[0]).neq('status', 'done'); }
+            
             const { data: tasks } = await q.limit(MAX_RESULT_ITEMS);
+            
+            if (__DEV__) {
+                console.log('[HamroAI] Database query returned tasks:', tasks?.length || 0);
+                if (tasks?.length) console.log('[HamroAI] Sample task:', tasks[0]);
+            }
+            
             if (!tasks?.length) return { tasks: [], message: 'No tasks found.' };
-            let result = tasks.map((t: any) => ({ title: t.title, status: t.status, priority: t.priority, due_date: t.due_date, assignee: profileMap[t.assigned_to] || 'Unassigned', project: projectMap[t.project_id] || 'Unknown', days_overdue: (t.due_date && t.status !== 'done') ? Math.max(0, Math.floor((Date.now() - new Date(t.due_date).getTime()) / 86400000)) : 0 }));
+            
+            let result = tasks.map((t: any) => ({ id: t.id, title: t.title, status: t.status, priority: t.priority, due_date: t.due_date, assignee: profileMap[t.assigned_to] || 'Unassigned', project: projectMap[t.project_id] || 'Unknown', days_overdue: (t.due_date && t.status !== 'done') ? Math.max(0, Math.floor((Date.now() - new Date(t.due_date).getTime()) / 86400000)) : 0 }));
             if (args.assignee_name) result = result.filter((t: any) => t.assignee.toLowerCase().includes(args.assignee_name.toLowerCase()));
+            
+            if (__DEV__) console.log('[HamroAI] Final result count:', result.length);
+            
             return { tasks: result, total: result.length };
         }
 
@@ -491,12 +541,38 @@ async function executeToolCall(name: ToolType, args: any, ctx: WsContext, userId
         }
 
         case 'bulk_update_tasks': {
-            const updates: any = {};
-            if (args.status) updates.status = args.status;
-            if (args.priority) updates.priority = args.priority;
-            if (args.due_date) updates.due_date = args.due_date;
-            if (args.status === 'done') updates.completed_at = new Date().toISOString();
-            const { data, error } = await supabase.from('tasks').update(updates).in('id', args.task_ids).select('title');
+            const baseUpdates: any = {};
+            if (args.priority) baseUpdates.priority = args.priority;
+            if (args.due_date) baseUpdates.due_date = args.due_date;
+            
+            // If status change requested, resolve custom_status_id per project (trigger handles status/completed_at)
+            if (args.status && args.task_ids?.length) {
+                const { data: taskRows } = await supabase.from('tasks').select('id, project_id').in('id', args.task_ids);
+                if (taskRows?.length) {
+                    const projIds = [...new Set(taskRows.map((t: any) => t.project_id))];
+                    const { data: allStatuses } = await supabase.from('project_statuses').select('id, name, project_id, category, is_default, is_completed').in('project_id', projIds);
+                    const statusesByProject = new Map<string, any[]>();
+                    (allStatuses || []).forEach((s: any) => { if (!statusesByProject.has(s.project_id)) statusesByProject.set(s.project_id, []); statusesByProject.get(s.project_id)!.push(s); });
+                    
+                    const results: string[] = [];
+                    for (const t of taskRows) {
+                        const projStatuses = statusesByProject.get(t.project_id) || [];
+                        const taskUpdates = { ...baseUpdates };
+                        if (projStatuses.length > 0) {
+                            let matched: any = null;
+                            if (args.status === 'done') matched = projStatuses.find((s: any) => s.category === 'done' || s.is_completed);
+                            else if (args.status === 'todo') matched = projStatuses.find((s: any) => s.category === 'todo' || s.is_default) || projStatuses[0];
+                            else { const label = args.status.replace(/_/g, ' ').toLowerCase(); matched = projStatuses.find((s: any) => s.name.toLowerCase().includes(label) || label.includes(s.name.toLowerCase())); }
+                            if (matched) taskUpdates.custom_status_id = matched.id;
+                        }
+                        const { data: d, error: e } = await supabase.from('tasks').update(taskUpdates).eq('id', t.id).select('title');
+                        if (!e && d?.[0]) results.push((d[0] as any).title);
+                    }
+                    return { success: true, updated_count: results.length, updated_titles: results };
+                }
+            }
+            
+            const { data, error } = await supabase.from('tasks').update(baseUpdates).in('id', args.task_ids).select('title');
             if (error) throw error;
             return { success: true, updated_count: data?.length || 0, updated_titles: data?.map((t: any) => t.title) || [] };
         }
@@ -506,10 +582,11 @@ async function executeToolCall(name: ToolType, args: any, ctx: WsContext, userId
             let entityType: string | null = null;
             if (args.task_name) { const t = await resolveTask(ctx, args.task_name); if (t) { entityId = t.id; entityType = 'task'; } }
             else if (args.project_name) { const p = resolveProjectFromCtx(ctx, args.project_name); if (p) { entityId = p.id; entityType = 'project'; } }
-            let q = supabase.from('notifications').select('type, title, body, actor_id, created_at').eq('workspace_id', ctx.wsId);
-            if (entityId) q = q.eq('entity_id', entityId);
+            let q = supabase.from('activity_logs').select('action_type, entity_type, description, actor_id, created_at').eq('workspace_id', ctx.wsId);
+            if (entityId && entityType === 'task') q = q.eq('task_id', entityId);
+            else if (entityId && entityType === 'project') q = q.eq('project_id', entityId);
             const { data: logs } = await q.order('created_at', { ascending: false }).limit(args.limit || 10);
-            return { logs: (logs || []).map((l: any) => ({ type: l.type, title: l.title, description: l.body, actor: profileMap[l.actor_id] || 'Unknown', date: new Date(l.created_at).toLocaleDateString(), time_ago: `${Math.floor((Date.now() - new Date(l.created_at).getTime()) / 86400000)}d ago` })) };
+            return { logs: (logs || []).map((l: any) => ({ type: l.action_type, title: l.action_type.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()), description: l.description, actor: profileMap[l.actor_id] || 'Unknown', date: new Date(l.created_at).toLocaleDateString(), time_ago: `${Math.floor((Date.now() - new Date(l.created_at).getTime()) / 86400000)}d ago` })) };
         }
 
         case 'create_task': {
@@ -519,7 +596,9 @@ async function executeToolCall(name: ToolType, args: any, ctx: WsContext, userId
             if (args.assignee_name) { const m = resolveMemberFromCtx(ctx, args.assignee_name); if (m) { assigneeId = m.id; assigneeName = m.full_name; } }
             const { data: et } = await supabase.from('tasks').select('position').eq('project_id', proj.id).order('position', { ascending: false }).limit(1);
             const maxPos = (et?.[0] as any)?.position ?? -1;
-            const { data, error } = await supabase.from('tasks').insert({ title: args.title, description: args.description || null, priority: args.priority || 'medium', due_date: args.due_date || null, project_id: proj.id, assigned_to: assigneeId, created_by: userId, status: 'todo', position: maxPos + 1 }).select('title').single();
+            // Resolve custom_status_id from project's default status so task appears in Kanban
+            const { data: defaultStatus } = await supabase.from('project_statuses').select('id').eq('project_id', proj.id).eq('is_default', true).limit(1).maybeSingle();
+            const { data, error } = await supabase.from('tasks').insert({ title: args.title, description: args.description || null, priority: args.priority || 'low', due_date: args.due_date || null, project_id: proj.id, assigned_to: assigneeId, created_by: userId, position: maxPos + 1, custom_status_id: defaultStatus?.id || null }).select('id, title').single();
             if (error) throw error;
             return { success: true, task_title: (data as any).title, project_name: proj.name, assignee_name: assigneeName };
         }
@@ -529,12 +608,20 @@ async function executeToolCall(name: ToolType, args: any, ctx: WsContext, userId
             if (!task) return { error: `Task "${args.task_name}" not found.` };
             const updates: any = {};
             if (args.new_status) {
-                updates.status = args.new_status;
-                if (args.new_status === 'done') updates.completed_at = new Date().toISOString();
+                // Only write custom_status_id — DB trigger handles status enum, completed_at, first_started_at
+                const { data: statuses } = await supabase.from('project_statuses').select('id, name, category, is_default, is_completed').eq('project_id', task.project_id);
+                if (statuses?.length) {
+                    let matched: any = null;
+                    if (args.new_status === 'done') matched = statuses.find((s: any) => s.category === 'done' || s.is_completed);
+                    else if (args.new_status === 'todo') matched = statuses.find((s: any) => s.category === 'todo' || s.is_default);
+                    else { const label = args.new_status.replace(/_/g, ' ').toLowerCase(); matched = statuses.find((s: any) => s.name.toLowerCase().includes(label) || label.includes(s.name.toLowerCase())); }
+                    if (matched) updates.custom_status_id = matched.id;
+                }
             }
             if (args.new_priority) updates.priority = args.new_priority;
             if (args.new_due_date) updates.due_date = args.new_due_date;
             if (args.new_title) updates.title = args.new_title;
+            if (args.new_description !== undefined) updates.description = args.new_description;
             if (args.new_assignee_name) { const m = resolveMemberFromCtx(ctx, args.new_assignee_name); if (m) updates.assigned_to = m.id; }
             if (!Object.keys(updates).length) return { error: 'No updates provided.' };
             const { error } = await supabase.from('tasks').update(updates).eq('id', task.id);
@@ -543,13 +630,17 @@ async function executeToolCall(name: ToolType, args: any, ctx: WsContext, userId
         }
 
         case 'create_project': {
-            const { data, error } = await supabase.from('projects').insert({ name: args.name, description: args.description || null, color: args.color || '#3B82F6', workspace_id: ctx.wsId, created_by: userId, is_archived: false }).select('name').single();
+            const { data, error } = await supabase.from('projects').insert({ name: args.name, description: args.description || null, color: args.color || '#3B82F6', workspace_id: ctx.wsId, created_by: userId, is_archived: false }).select('id, name').single();
             if (error) throw error;
             await supabase.from('project_statuses').insert([
-                { project_id: (data as any).id, name: 'To Do', color: '#64748B', position: 0, is_default: true, is_completed: false },
-                { project_id: (data as any).id, name: 'In Progress', color: '#3B82F6', position: 1, is_default: false, is_completed: false },
-                { project_id: (data as any).id, name: 'Done', color: '#22C55E', position: 2, is_default: false, is_completed: true },
+                { project_id: (data as any).id, name: 'To Do', color: '#64748B', position: 0, is_default: true, is_completed: false, category: 'todo' },
+                { project_id: (data as any).id, name: 'In Progress', color: '#3B82F6', position: 1, is_default: false, is_completed: false, category: 'active' },
+                { project_id: (data as any).id, name: 'Done', color: '#22C55E', position: 2, is_default: false, is_completed: true, category: 'done' },
             ]);
+            // Update context cache so subsequent tool calls in the same round can see new project
+            ctx.projects.push({ id: (data as any).id, name: (data as any).name });
+            ctx.projectIds.push((data as any).id);
+            ctx.projectMap[(data as any).id] = (data as any).name;
             return { success: true, project_name: (data as any).name };
         }
 
@@ -560,10 +651,11 @@ async function executeToolCall(name: ToolType, args: any, ctx: WsContext, userId
             if (args.new_name) updates.name = args.new_name;
             if (args.new_description) updates.description = args.new_description;
             if (args.new_color) updates.color = args.new_color;
+            if (args.is_archived !== undefined) updates.is_archived = args.is_archived;
             if (!Object.keys(updates).length) return { error: 'No updates provided.' };
             const { error } = await supabase.from('projects').update(updates).eq('id', proj.id);
             if (error) throw error;
-            return { success: true, old_name: proj.name, new_name: updates.name || proj.name };
+            return { success: true, old_name: proj.name, new_name: updates.name || proj.name, is_archived: updates.is_archived };
         }
 
         case 'invite_member': {
@@ -583,8 +675,12 @@ async function executeToolCall(name: ToolType, args: any, ctx: WsContext, userId
             if (!task) return { error: `Task "${args.task_name}" not found.` };
             const member = resolveMemberFromCtx(ctx, args.new_assignee_name);
             if (!member) return { error: `Member "${args.new_assignee_name}" not found.` };
+            // Update legacy field
             const { error } = await supabase.from('tasks').update({ assigned_to: member.id }).eq('id', task.id);
             if (error) throw error;
+            // Sync task_assignees: clear existing, insert new
+            await supabase.from('task_assignees').delete().eq('task_id', task.id);
+            await supabase.from('task_assignees').insert({ task_id: task.id, user_id: member.id, assigned_by: userId });
             return { success: true, task_title: task.title, new_assignee: member.full_name };
         }
 
@@ -652,16 +748,26 @@ async function executeToolCall(name: ToolType, args: any, ctx: WsContext, userId
             const proj = resolveProjectFromCtx(ctx, args.project_name);
             if (!proj) return { error: `Project "${args.project_name}" not found.` };
             if (args.action === 'list') {
-                const { data } = await supabase.from('project_statuses').select('name, color, position, is_default, is_completed').eq('project_id', proj.id).order('position');
-                return { project_name: proj.name, statuses: data || [] };
+                const { data } = await supabase.from('project_statuses').select('name, color, position, is_default, is_completed, category').eq('project_id', proj.id).order('position');
+                return { project_name: proj.name, statuses: (data || []).map((s: any) => ({ name: s.name, color: s.color, category: s.category, position: s.position })) };
             }
             if (args.action === 'add') {
                 if (!args.status_name) return { error: 'Status name is required.' };
-                const { data: existing } = await supabase.from('project_statuses').select('position').eq('project_id', proj.id).order('position', { ascending: false }).limit(1);
-                const maxPos = (existing?.[0] as any)?.position ?? -1;
-                const { error } = await supabase.from('project_statuses').insert({ project_id: proj.id, name: args.status_name, color: args.color || '#6366F1', position: maxPos + 1, is_default: false, is_completed: args.is_completed || false });
+                const cat = args.category || 'active';
+                // Enforce: only 1 done, only 1 cancelled
+                if (cat === 'done' || cat === 'cancelled') {
+                    const { data: existing } = await supabase.from('project_statuses').select('id').eq('project_id', proj.id).eq('category', cat);
+                    if (existing && existing.length > 0) return { error: `Project already has a "${cat}" status. Only one is allowed.` };
+                }
+                const { data: posData } = await supabase.from('project_statuses').select('position').eq('project_id', proj.id).order('position', { ascending: false }).limit(1);
+                const maxPos = (posData?.[0] as any)?.position ?? -1;
+                const { error } = await supabase.from('project_statuses').insert({
+                    project_id: proj.id, name: args.status_name, color: args.color || '#6366F1',
+                    position: maxPos + 1, category: cat,
+                    is_default: cat === 'todo', is_completed: cat === 'done' || cat === 'cancelled',
+                });
                 if (error) throw error;
-                return { success: true, project_name: proj.name, added_status: args.status_name };
+                return { success: true, project_name: proj.name, added_status: args.status_name, category: cat };
             }
             if (args.action === 'rename') {
                 if (!args.status_name || !args.new_name) return { error: 'Both status_name and new_name are required.' };
@@ -680,6 +786,14 @@ async function executeToolCall(name: ToolType, args: any, ctx: WsContext, userId
             const { error } = await supabase.from('tasks').delete().eq('id', task.id);
             if (error) throw error;
             return { success: true, deleted_task: task.title };
+        }
+
+        case 'add_comment': {
+            const task = await resolveTask(ctx, args.task_name);
+            if (!task) return { error: `Task "${args.task_name}" not found.` };
+            const { error } = await supabase.from('task_comments').insert({ task_id: task.id, user_id: userId, content: args.content });
+            if (error) throw error;
+            return { success: true, task_title: task.title, comment_preview: args.content.slice(0, 100) };
         }
 
         default:
@@ -732,6 +846,8 @@ Map user questions to the right tool(s):
 **Update:** "move task" / "change priority" / "mark done" / "assign to" → update_task / reassign_task
 **Bulk:** "mark all overdue as high" → search first, then bulk_update_tasks (confirm if >3 tasks)
 **Delete:** "delete task X" → delete_task (always confirm first)
+**Comment:** "add comment" / "leave a note" / "post update on task" → add_comment
+**Archive:** "archive project" / "unarchive" → update_project (with is_archived)
 **Invite:** "invite member" → invite_member
 **Role:** "change role" / "make admin" → change_member_role
 **Smart:** "what should I work on" → search_tasks(assignee=current_user, overdue) + get_tasks_due_soon(today)
@@ -739,13 +855,19 @@ Map user questions to the right tool(s):
 **Prediction:** "when will project finish" → get_project_details → estimate from velocity (completed_this_week vs remaining)
 
 ## RULE 3: RESPONSE FORMAT
-- Use names, NEVER UUIDs/IDs in replies
+- Use names, NEVER show UUIDs/IDs in text
 - Use emojis, bullet points, **bold** for key info
 - Never show raw JSON, "null", "undefined", "database"
-- When relevant, end with buttons block:
-\`\`\`buttons
-[{"label":"View Project","action":"open_project","id":"<id>","variant":"primary"}]
-\`\`\`
+- **ALWAYS add buttons when listing tasks/projects:**
+  - After listing tasks → add buttons for each task
+  - After listing projects → add buttons for each project
+  - Format: buttons block with JSON array containing label, action, id for each item
+  - Example: buttons block with JSON array containing label, action, id for each item
+  - This is REQUIRED - users need clickable links to open tasks/projects
+- **ALWAYS add a speak button for your responses:**
+  - After any response, add a speak button with your full response text
+  - Format: {"label":"🔊 Speak","action":"speak","text":"[your full response text]"}
+  - This allows users to hear your responses
 
 ## RULE 4: UNSUPPORTED FEATURES
 If asked about these, say "This isn't available yet" and suggest an alternative:
@@ -760,24 +882,50 @@ Proactive, warm, concise. Offer follow-up suggestions. Never be robotic.`;
 // ─── Response Parser ──────────────────────────────────────────────────────────
 
 function parseButtonsFromResponse(content: string): { text: string; buttons: SmartButton[] | null } {
-    const buttonRegex = /```buttons\s*([\s\S]*?)```/;
-    const match = content.match(buttonRegex);
+    // Try both formats: with and without backticks
+    const buttonRegexWithBackticks = /```buttons\s*([\s\S]*?)```/;
+    const buttonRegexWithoutBackticks = /^buttons\s*\n([\s\S]*?)\nbuttons$/m;
+    
+    let match = content.match(buttonRegexWithBackticks);
+    if (!match) {
+        match = content.match(buttonRegexWithoutBackticks);
+    }
+    
+    // Debug: Log the raw AI response
+    if (__DEV__) console.log('[HamroAI] Raw AI response:', content);
+    if (__DEV__) console.log('[HamroAI] Button match found:', !!match);
+    
     if (!match) return { text: content, buttons: null };
     try {
         const buttons: SmartButton[] = JSON.parse(match[1].trim());
-        const text = content.replace(buttonRegex, '').trim();
+        const text = content.replace(match[0], '').trim();
+        
+        // Debug: Log parsed buttons
+        if (__DEV__) console.log('[HamroAI] Parsed buttons:', buttons);
+        
         return { text, buttons };
-    } catch {
-        return { text: content.replace(buttonRegex, '').trim(), buttons: null };
+    } catch (err) {
+        // Debug: Log parsing errors
+        if (__DEV__) console.log('[HamroAI] Button parsing error:', err);
+        return { text: content.replace(match[0], '').trim(), buttons: null };
     }
 }
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
-const GROQ_API_URL = (process.env.EXPO_PUBLIC_GROQ_BASE_URL || 'https://api.groq.com/openai/v1').replace(/\/$/, '');
-const AI_MODEL = 'llama-3.3-70b-versatile';
+const GROQ_API_URL = 'https://api.groq.com/openai/v1';
 const WHISPER_MODEL = 'whisper-large-v3';
 const MAX_TOOL_ROUNDS = 6;
+const MAX_RETRIES_PER_CONFIG = 2;
+
+// Multi-model fallback chain (ordered by tokens/day limit: highest capacity first)
+// Based on actual Groq rate limits from user's account
+const AI_MODELS = [
+    'llama-3.1-8b-instant',                          // 500K tokens/day, 14.4K req/day - Best capacity
+    'meta-llama/llama-4-scout-17b-16e-instruct',    // 500K tokens/day, 1K req/day - High quality
+    'meta-llama/llama-4-maverick-17b-128e-instruct', // 500K tokens/day, 1K req/day - Alternative
+    'llama-3.3-70b-versatile',                       // 100K tokens/day, 1K req/day - Premium fallback
+];
 
 const QUICK_PROMPTS = [
     { label: '📊 Workspace summary', prompt: 'Give me a full workspace summary with overdue tasks and at-risk projects.' },
@@ -819,6 +967,7 @@ const TOOL_LABELS: Record<string, string> = {
     get_task_comments: '💬 Loading discussion',
     manage_project_status: '🔄 Managing statuses',
     delete_task: '🗑 Deleting task',
+    add_comment: '💬 Adding comment',
 };
 
 // ─── Hook ─────────────────────────────────────────────────────────────────────
@@ -837,7 +986,14 @@ export function useAIAssistant() {
 
     const wsId = currentWorkspace?.id || '';
     const userId = user?.id || '';
-    const apiKey = process.env.EXPO_PUBLIC_GROQ_API_KEY || '';
+    
+    // Load multiple API keys from env (GROQ_API_KEY, GROQ_API_KEY_2, GROQ_API_KEY_3)
+    const apiKeys = [
+        process.env.EXPO_PUBLIC_GROQ_API_KEY,
+        process.env.EXPO_PUBLIC_GROQ_API_KEY_2,
+        process.env.EXPO_PUBLIC_GROQ_API_KEY_3,
+    ].filter(Boolean) as string[];
+    
     const storageKey = wsId ? `${STORAGE_KEY_PREFIX}${wsId}` : '';
 
     // Keep messagesRef in sync
@@ -891,9 +1047,9 @@ export function useAIAssistant() {
         addMessage({ role: 'user', content: userText });
         const loadingId = addMessage({ role: 'assistant', content: '', isLoading: true, status: 'Thinking...' });
 
-        if (!apiKey) {
+        if (apiKeys.length === 0) {
             updateMessage(loadingId, {
-                content: '⚠️ HamroAI is not configured yet. Please add your `EXPO_PUBLIC_GROQ_API_KEY` to the `.env` file and restart the app.',
+                content: '⚠️ HamroAI is not configured yet. Please add `EXPO_PUBLIC_GROQ_API_KEY` to the `.env` file and restart the app.',
                 isLoading: false, status: undefined,
             });
             setIsLoading(false);
@@ -939,43 +1095,91 @@ export function useAIAssistant() {
 
                 updateMessage(loadingId, { status: round === 1 ? 'Analyzing...' : `Using tools (round ${round})...` });
 
-                const controller = new AbortController();
-                const timeout = setTimeout(() => controller.abort(), 30000);
+                // Try all API key + model combinations with retries
+                // Priority: fastest model on all keys, then next fastest on all keys
+                let success = false;
+                let data: any = null;
+                let lastError: Error | null = null;
 
-                const url = `${GROQ_API_URL}/chat/completions`;
-                const reqBody = JSON.stringify({
-                    model: AI_MODEL,
-                    messages: apiMessages,
-                    tools: toolDefs,
-                    tool_choice: 'auto',
-                    max_tokens: 2048,
-                    temperature: 0.4,
-                });
+                for (let modelIdx = 0; modelIdx < AI_MODELS.length && !success; modelIdx++) {
+                    for (let keyIdx = 0; keyIdx < apiKeys.length && !success; keyIdx++) {
+                        const apiKey = apiKeys[keyIdx];
+                        const model = AI_MODELS[modelIdx];
 
-                if (round === 1 && __DEV__) console.log('[HamroAI] URL:', url, '| Body size:', reqBody.length);
+                        for (let retry = 0; retry < MAX_RETRIES_PER_CONFIG && !success; retry++) {
+                            if (abortRef.current) break;
 
-                let response: Response;
-                try {
-                    response = await fetch(url, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-                        body: reqBody,
-                        signal: controller.signal as any,
-                    });
-                } catch (fetchErr: any) {
-                    clearTimeout(timeout);
-                    if (fetchErr?.name === 'AbortError') throw new Error('Request timed out. Please check your internet connection and try again.');
-                    throw new Error(`Network error: ${fetchErr?.message || 'Could not connect to AI service.'}`);
-                } finally {
-                    clearTimeout(timeout);
+                            try {
+                                const controller = new AbortController();
+                                const timeout = setTimeout(() => controller.abort(), 30000);
+
+                                const url = `${GROQ_API_URL}/chat/completions`;
+                                const reqBody = JSON.stringify({
+                                    model,
+                                    messages: apiMessages,
+                                    tools: toolDefs,
+                                    tool_choice: 'auto',
+                                    max_tokens: 2048,
+                                    temperature: 0.4,
+                                });
+
+                                if (round === 1 && modelIdx === 0 && keyIdx === 0 && retry === 0 && __DEV__) {
+                                    console.log('[HamroAI] Primary:', model, '| Keys:', apiKeys.length, '| Body:', reqBody.length);
+                                }
+
+                                const response = await fetch(url, {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+                                    body: reqBody,
+                                    signal: controller.signal as any,
+                                });
+
+                                clearTimeout(timeout);
+
+                                if (!response.ok) {
+                                    const errText = await response.text();
+                                    const isRateLimit = response.status === 429 || errText.includes('rate_limit');
+                                    const isBadUrl = errText.includes('unknown_url') || errText.includes('Unknown request URL');
+                                    
+                                    if (isBadUrl) {
+                                        throw new Error('Invalid API URL. The endpoint has changed. Please update the app.');
+                                    }
+                                    
+                                    if (isRateLimit) {
+                                        if (__DEV__) console.log(`[HamroAI] Rate limit on key ${keyIdx + 1}, model ${model}, retry ${retry + 1}`);
+                                        lastError = new Error(`Rate limit (key ${keyIdx + 1})`);
+                                        await new Promise(r => setTimeout(r, Math.min(1000 * (retry + 1), 3000)));
+                                        continue;
+                                    }
+                                    
+                                    throw new Error(`API error ${response.status}: ${errText.slice(0, 200)}`);
+                                }
+
+                                data = await response.json();
+                                success = true;
+                                
+                                if (modelIdx > 0 || keyIdx > 0) {
+                                    if (__DEV__) console.log(`[HamroAI] Fallback success: key ${keyIdx + 1}, model ${model}`);
+                                }
+                            } catch (err: any) {
+                                lastError = err;
+                                if (err.name === 'AbortError') {
+                                    if (__DEV__) console.log(`[HamroAI] Timeout on key ${keyIdx + 1}, model ${model}`);
+                                    continue;
+                                }
+                                if (err.message?.includes('Invalid API URL')) {
+                                    throw err;
+                                }
+                                if (__DEV__) console.log(`[HamroAI] Error on key ${keyIdx + 1}, model ${model}:`, err.message?.slice(0, 100));
+                                await new Promise(r => setTimeout(r, 500 * (retry + 1)));
+                            }
+                        }
+                    }
                 }
 
-                if (!response.ok) {
-                    const err = await response.text().catch(() => 'unknown');
-                    throw new Error(`API error ${response.status}: ${err.slice(0, 200)}`);
+                if (!success || !data) {
+                    throw lastError || new Error('All API keys and models exhausted. Please check rate limits or add more keys.');
                 }
-
-                const data = await response.json() as any;
                 const choice = data.choices?.[0];
                 const msg = choice?.message;
 
@@ -1031,7 +1235,7 @@ export function useAIAssistant() {
         } finally {
             setIsLoading(false);
         }
-    }, [isLoading, wsId, userId, apiKey, addMessage, updateMessage]);
+    }, [isLoading, wsId, userId, apiKeys, addMessage, updateMessage]);
 
     // Fix 5: Retry function
     const retryLastMessage = useCallback(() => {
@@ -1053,21 +1257,41 @@ export function useAIAssistant() {
     }, [lastFailedPrompt, sendMessage]);
 
     const transcribeAudio = useCallback(async (audioUri: string): Promise<string> => {
+        if (apiKeys.length === 0) throw new Error('No API key configured');
+        
         const formData = new FormData();
         formData.append('file', { uri: audioUri, type: 'audio/m4a', name: 'recording.m4a' } as any);
         formData.append('model', WHISPER_MODEL);
         formData.append('language', 'en');
 
-        const response = await fetch(`${GROQ_API_URL}/audio/transcriptions`, {
-            method: 'POST',
-            headers: { Authorization: `Bearer ${apiKey}` },
-            body: formData as any,
-        });
+        // Try all API keys for transcription
+        let lastError: Error | null = null;
+        for (const apiKey of apiKeys) {
+            try {
+                const response = await fetch(`${GROQ_API_URL}/audio/transcriptions`, {
+                    method: 'POST',
+                    headers: { Authorization: `Bearer ${apiKey}` },
+                    body: formData as any,
+                });
 
-        if (!response.ok) throw new Error('Transcription failed');
-        const data = await response.json() as any;
-        return data.text || '';
-    }, [apiKey]);
+                if (!response.ok) {
+                    const errText = await response.text();
+                    if (response.status === 429 || errText.includes('rate_limit')) {
+                        lastError = new Error('Rate limit');
+                        continue;
+                    }
+                    throw new Error(`Transcription failed: ${response.status}`);
+                }
+                
+                const data = await response.json() as any;
+                return data.text || '';
+            } catch (err: any) {
+                lastError = err;
+            }
+        }
+        
+        throw lastError || new Error('Transcription failed on all API keys');
+    }, [apiKeys]);
 
     const clearMessages = useCallback(() => {
         setMessages([]);

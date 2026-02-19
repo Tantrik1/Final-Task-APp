@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
     View,
     Text,
@@ -7,6 +7,8 @@ import {
     RefreshControl,
     ActivityIndicator,
     TouchableOpacity,
+    TextInput,
+    ScrollView,
     Platform
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -20,11 +22,17 @@ import {
     Timer,
     FolderKanban,
     CircleDot,
-    ArrowLeft
+    ArrowLeft,
+    Search,
+    X,
+    SlidersHorizontal
 } from 'lucide-react-native';
 import { supabase } from '@/lib/supabase';
 import { useWorkspace } from '@/hooks/useWorkspace';
+import { useTheme } from '@/contexts/ThemeContext';
+import { ActivitySkeleton } from '@/components/ui/Skeleton';
 import { ActivityItem } from '@/hooks/useDashboardData';
+import Animated, { FadeInDown } from 'react-native-reanimated';
 
 import { DashboardHeader } from '@/components/DashboardHeader';
 import { GlobalTabBar } from '@/components/GlobalTabBar';
@@ -43,7 +51,17 @@ function getActivityIcon(type: string) {
     }
 }
 
-const ActivityRow = ({ activity }: { activity: ActivityItem }) => {
+const FILTER_TYPES = [
+    { id: 'all', label: 'All', icon: CircleDot },
+    { id: 'create', label: 'Created', icon: Sparkles },
+    { id: 'update', label: 'Updated', icon: Zap },
+    { id: 'comment', label: 'Comments', icon: MessageCircle },
+    { id: 'assign', label: 'Assigned', icon: Users },
+    { id: 'timer_start', label: 'Timer', icon: Timer },
+    { id: 'upload', label: 'Uploads', icon: FolderKanban },
+];
+
+const ActivityRow = ({ activity, colors }: { activity: ActivityItem; colors: any }) => {
     const router = useRouter();
     const { icon: Icon, color, bg } = getActivityIcon(activity.action_type);
 
@@ -56,20 +74,20 @@ const ActivityRow = ({ activity }: { activity: ActivityItem }) => {
     };
 
     return (
-        <TouchableOpacity style={styles.activityRow} onPress={handlePress} activeOpacity={0.7}>
+        <TouchableOpacity style={[styles.activityRow, { backgroundColor: colors.card, borderBottomColor: colors.border, shadowColor: colors.shadow }]} onPress={handlePress} activeOpacity={0.7}>
             <View style={[styles.activityIconWrap, { backgroundColor: bg }]}>
                 <Icon size={16} color={color} />
             </View>
             <View style={styles.activityInfo}>
                 <View style={styles.activityHeader}>
-                    <Text style={styles.actorName}>{activity.actor_name}</Text>
-                    <Text style={styles.activityTime}>{formatDistanceToNow(new Date(activity.created_at), { addSuffix: true })}</Text>
+                    <Text style={[styles.actorName, { color: colors.text }]}>{activity.actor_name}</Text>
+                    <Text style={[styles.activityTime, { color: colors.textTertiary }]}>{formatDistanceToNow(new Date(activity.created_at), { addSuffix: true })}</Text>
                 </View>
-                <Text style={styles.activityDesc}>{activity.description}</Text>
+                <Text style={[styles.activityDesc, { color: colors.textSecondary }]}>{activity.description}</Text>
                 {activity.project_name && (
-                    <View style={styles.projectBadge}>
+                    <View style={[styles.projectBadge, { backgroundColor: colors.surface }]}>
                         <View style={[styles.projectDot, { backgroundColor: activity.project_color || '#64748B' }]} />
-                        <Text style={styles.projectText}>{activity.project_name}</Text>
+                        <Text style={[styles.projectText, { color: colors.textSecondary }]}>{activity.project_name}</Text>
                     </View>
                 )}
             </View>
@@ -83,6 +101,7 @@ export default function ActivityLogScreen() {
     const insets = useSafeAreaInsets();
     const router = useRouter();
     const { currentWorkspace } = useWorkspace();
+    const { colors } = useTheme();
 
     const [activities, setActivities] = useState<ActivityItem[]>([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -90,6 +109,8 @@ export default function ActivityLogScreen() {
     const [isLoadingMore, setIsLoadingMore] = useState(false);
     const [hasMore, setHasMore] = useState(true);
     const [page, setPage] = useState(0);
+    const [searchQuery, setSearchQuery] = useState('');
+    const [activeFilter, setActiveFilter] = useState('all');
 
     const fetchActivities = useCallback(async (refresh = false) => {
         if (!currentWorkspace?.id) return;
@@ -195,34 +216,140 @@ export default function ActivityLogScreen() {
         }
     };
 
+    const filteredActivities = useMemo(() => {
+        let result = activities;
+        if (activeFilter !== 'all') {
+            if (activeFilter === 'timer_start') {
+                result = result.filter(a => a.action_type === 'timer_start' || a.action_type === 'timer_pause');
+            } else {
+                result = result.filter(a => a.action_type === activeFilter);
+            }
+        }
+        if (searchQuery.trim()) {
+            const q = searchQuery.toLowerCase();
+            result = result.filter(a =>
+                a.description?.toLowerCase().includes(q) ||
+                a.actor_name?.toLowerCase().includes(q) ||
+                a.project_name?.toLowerCase().includes(q)
+            );
+        }
+        return result;
+    }, [activities, activeFilter, searchQuery]);
+
+    const activeCount = activeFilter !== 'all' || searchQuery.trim()
+        ? filteredActivities.length
+        : activities.length;
+
     return (
-        <View style={styles.container}>
+        <View style={[styles.container, { backgroundColor: colors.background }]}>
             <DashboardHeader showBack />
 
-            <FlatList
-                data={activities}
-                keyExtractor={(item) => item.id}
-                renderItem={({ item }) => <ActivityRow activity={item} />}
-                contentContainerStyle={[styles.listContent, { paddingBottom: 100 }]}
-                refreshControl={
-                    <RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} tintColor="#F97316" />
-                }
-                onEndReached={loadMore}
-                onEndReachedThreshold={0.5}
-                ListFooterComponent={
-                    isLoadingMore ? (
-                        <View style={styles.loaderFooter}>
-                            <ActivityIndicator size="small" color="#F97316" />
-                        </View>
-                    ) : null
-                }
-                ListEmptyComponent={!isLoading ? (
-                    <View style={styles.emptyState}>
-                        <Zap size={48} color="#CBD5E1" />
-                        <Text style={styles.emptyText}>No activity recorded yet</Text>
+            {/* ─── Advanced Filter Bar ─── */}
+            <View style={[styles.filterBar, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
+                {/* Search Row */}
+                <View style={[styles.searchRow]}>
+                    <View style={[styles.searchBox, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                        <Search size={16} color={colors.textTertiary} />
+                        <TextInput
+                            style={[styles.searchInput, { color: colors.text }]}
+                            placeholder="Search activity..."
+                            placeholderTextColor={colors.textTertiary}
+                            value={searchQuery}
+                            onChangeText={setSearchQuery}
+                        />
+                        {searchQuery.length > 0 && (
+                            <TouchableOpacity onPress={() => setSearchQuery('')}>
+                                <X size={16} color={colors.textTertiary} />
+                            </TouchableOpacity>
+                        )}
                     </View>
-                ) : null}
-            />
+                    <View style={[styles.countBadge, { backgroundColor: colors.primary + '15' }]}>
+                        <Text style={[styles.countText, { color: colors.primary }]}>{activeCount}</Text>
+                    </View>
+                </View>
+
+                {/* Type Filter Chips */}
+                <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.chipRow}
+                >
+                    {FILTER_TYPES.map((filter) => {
+                        const isActive = activeFilter === filter.id;
+                        const { color: iconColor } = filter.id === 'all'
+                            ? { color: isActive ? '#FFF' : colors.textSecondary }
+                            : getActivityIcon(filter.id);
+                        return (
+                            <TouchableOpacity
+                                key={filter.id}
+                                style={[
+                                    styles.chip,
+                                    { backgroundColor: colors.surface, borderColor: colors.border },
+                                    isActive && { backgroundColor: colors.primary, borderColor: colors.primary }
+                                ]}
+                                onPress={() => setActiveFilter(filter.id)}
+                            >
+                                <filter.icon size={13} color={isActive ? '#FFF' : iconColor} />
+                                <Text style={[
+                                    styles.chipText,
+                                    { color: colors.textSecondary },
+                                    isActive && { color: '#FFF' }
+                                ]}>{filter.label}</Text>
+                            </TouchableOpacity>
+                        );
+                    })}
+                </ScrollView>
+            </View>
+
+            {/* ─── Activity List ─── */}
+            {isLoading ? (
+                <ActivitySkeleton />
+            ) : (
+                <FlatList
+                    data={filteredActivities}
+                    keyExtractor={(item) => item.id}
+                    renderItem={({ item, index }) => (
+                        <Animated.View entering={FadeInDown.delay(index * 30).springify()}>
+                            <ActivityRow activity={item} colors={colors} />
+                        </Animated.View>
+                    )}
+                    contentContainerStyle={[styles.listContent, { paddingBottom: 100 }]}
+                    refreshControl={
+                        <RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} tintColor={colors.primary} />
+                    }
+                    onEndReached={loadMore}
+                    onEndReachedThreshold={0.5}
+                    ListFooterComponent={
+                        isLoadingMore ? (
+                            <View style={styles.loaderFooter}>
+                                <ActivityIndicator size="small" color={colors.primary} />
+                            </View>
+                        ) : null
+                    }
+                    ListEmptyComponent={
+                        <View style={styles.emptyState}>
+                            <View style={[styles.emptyIconWrap, { backgroundColor: colors.surface }]}>
+                                <Zap size={32} color={colors.textTertiary} />
+                            </View>
+                            <Text style={[styles.emptyTitle, { color: colors.text }]}>
+                                {activeFilter !== 'all' || searchQuery ? 'No matching activity' : 'No activity recorded yet'}
+                            </Text>
+                            <Text style={[styles.emptyText, { color: colors.textTertiary }]}>
+                                {activeFilter !== 'all' || searchQuery ? 'Try adjusting your filters' : 'Activity will appear here as your team works'}
+                            </Text>
+                            {(activeFilter !== 'all' || searchQuery.trim()) && (
+                                <TouchableOpacity
+                                    style={[styles.clearBtn, { borderColor: colors.border }]}
+                                    onPress={() => { setActiveFilter('all'); setSearchQuery(''); }}
+                                >
+                                    <X size={14} color={colors.primary} />
+                                    <Text style={[styles.clearBtnText, { color: colors.primary }]}>Clear Filters</Text>
+                                </TouchableOpacity>
+                            )}
+                        </View>
+                    }
+                />
+            )}
 
             <GlobalTabBar />
         </View>
@@ -232,34 +359,71 @@ export default function ActivityLogScreen() {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#F8FAFC',
     },
-    header: {
-        backgroundColor: '#FFFFFF',
+    center: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+
+    // ─── Filter Bar ───
+    filterBar: {
+        paddingTop: 12,
+        paddingBottom: 12,
         borderBottomWidth: 1,
-        borderBottomColor: '#F1F5F9',
-        zIndex: 10,
+        gap: 10,
     },
-    headerContent: {
+    searchRow: {
         flexDirection: 'row',
         alignItems: 'center',
-        justifyContent: 'space-between',
         paddingHorizontal: 16,
-        paddingVertical: 12,
+        gap: 10,
     },
-    backBtn: {
-        width: 40,
-        height: 40,
+    searchBox: {
+        flex: 1,
+        flexDirection: 'row',
         alignItems: 'center',
-        justifyContent: 'center',
+        height: 40,
+        borderRadius: 12,
+        paddingHorizontal: 12,
+        gap: 8,
+        borderWidth: 1,
+    },
+    searchInput: {
+        flex: 1,
+        fontSize: 14,
+        height: '100%',
+    },
+    countBadge: {
+        paddingHorizontal: 10,
+        paddingVertical: 6,
+        borderRadius: 10,
+        minWidth: 36,
+        alignItems: 'center',
+    },
+    countText: {
+        fontSize: 13,
+        fontWeight: '800',
+    },
+    chipRow: {
+        paddingHorizontal: 16,
+        gap: 8,
+    },
+    chip: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 5,
+        paddingVertical: 6,
+        paddingHorizontal: 12,
         borderRadius: 20,
-        backgroundColor: '#F1F5F9',
+        borderWidth: 1,
     },
-    headerTitle: {
-        fontSize: 18,
-        fontWeight: '700',
-        color: '#1E293B',
+    chipText: {
+        fontSize: 12,
+        fontWeight: '600',
     },
+
+    // ─── List ───
     listContent: {
         padding: 16,
         paddingBottom: 40,
@@ -269,15 +433,12 @@ const styles = StyleSheet.create({
         alignItems: 'flex-start',
         gap: 12,
         paddingVertical: 12,
-        borderBottomWidth: 1,
-        borderBottomColor: '#F1F5F9',
-        backgroundColor: '#FFFFFF',
         paddingHorizontal: 12,
         marginBottom: 8,
-        borderRadius: 12,
-        // Shadow for premium feel
+        borderRadius: 14,
+        borderBottomWidth: 0,
         ...Platform.select({
-            ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.03, shadowRadius: 4 },
+            ios: { shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.04, shadowRadius: 4 },
             android: { elevation: 1 },
         }),
     },
@@ -301,16 +462,13 @@ const styles = StyleSheet.create({
     actorName: {
         fontSize: 14,
         fontWeight: '700',
-        color: '#0F172A',
     },
     activityTime: {
         fontSize: 11,
-        color: '#94A3B8',
     },
     activityDesc: {
         fontSize: 13,
         fontWeight: '500',
-        color: '#475569',
         lineHeight: 18,
         marginBottom: 6,
     },
@@ -318,7 +476,6 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         gap: 6,
-        backgroundColor: '#F8FAFC',
         alignSelf: 'flex-start',
         paddingHorizontal: 8,
         paddingVertical: 4,
@@ -332,21 +489,47 @@ const styles = StyleSheet.create({
     projectText: {
         fontSize: 11,
         fontWeight: '600',
-        color: '#64748B',
     },
     loaderFooter: {
         paddingVertical: 20,
         alignItems: 'center',
     },
+
+    // ─── Empty State ───
     emptyState: {
         alignItems: 'center',
         justifyContent: 'center',
         paddingVertical: 60,
-        gap: 12,
+        gap: 8,
+    },
+    emptyIconWrap: {
+        width: 64,
+        height: 64,
+        borderRadius: 20,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginBottom: 8,
+    },
+    emptyTitle: {
+        fontSize: 17,
+        fontWeight: '700',
     },
     emptyText: {
-        fontSize: 14,
-        color: '#94A3B8',
+        fontSize: 13,
         fontWeight: '500',
+    },
+    clearBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        marginTop: 12,
+        paddingHorizontal: 16,
+        paddingVertical: 8,
+        borderRadius: 10,
+        borderWidth: 1,
+    },
+    clearBtnText: {
+        fontSize: 13,
+        fontWeight: '600',
     },
 });

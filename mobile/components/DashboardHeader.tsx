@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, Image, Modal, StyleSheet, Platform, StatusBar } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
@@ -17,6 +17,8 @@ import { useWorkspace } from '@/hooks/useWorkspace';
 import { useAuth } from '@/hooks/useAuth';
 import { useNotifications } from '@/hooks/useNotifications';
 import { useRouter } from 'expo-router';
+import { useTheme } from '@/contexts/ThemeContext';
+import { supabase } from '@/lib/supabase';
 
 export function DashboardHeader({ showBack = false }: { showBack?: boolean }) {
     const insets = useSafeAreaInsets();
@@ -24,9 +26,24 @@ export function DashboardHeader({ showBack = false }: { showBack?: boolean }) {
     const { currentWorkspace, workspaces, setCurrentWorkspaceId } = useWorkspace();
     const { signOut, user } = useAuth();
     const { unreadCount } = useNotifications();
+    const { colors, colorScheme } = useTheme();
+    const isDark = colorScheme === 'dark';
 
     const [showWorkspaceMenu, setShowWorkspaceMenu] = useState(false);
     const [showProfileMenu, setShowProfileMenu] = useState(false);
+    const [userAvatar, setUserAvatar] = useState<string | null>(null);
+    const [userName, setUserName] = useState<string | null>(null);
+
+    useEffect(() => {
+        if (!user?.id) return;
+        supabase.from('profiles').select('avatar_url, full_name').eq('id', user.id).single()
+            .then(({ data }) => {
+                if (data) {
+                    setUserAvatar(data.avatar_url);
+                    setUserName(data.full_name);
+                }
+            });
+    }, [user?.id]);
 
     const handleSignOut = async () => {
         setShowProfileMenu(false);
@@ -34,91 +51,115 @@ export function DashboardHeader({ showBack = false }: { showBack?: boolean }) {
         router.replace('/auth');
     };
 
-    const InitialsAvatar = ({ name, size = 32 }: { name: string, size?: number }) => (
-        <View
-            style={{
-                width: size,
-                height: size,
-                borderRadius: size / 3,
-                backgroundColor: '#FFF7ED',
-                alignItems: 'center',
-                justifyContent: 'center',
-                borderWidth: 1,
-                borderColor: '#FFEDD5'
-            }}
-        >
-            <Text style={{ color: '#F97316', fontWeight: '700', fontSize: size / 2 }}>
-                {name?.charAt(0).toUpperCase() || '?'}
-            </Text>
-        </View>
-    );
+    const getGreeting = () => {
+        const h = new Date().getHours();
+        if (h < 12) return 'Good morning';
+        if (h < 17) return 'Good afternoon';
+        return 'Good evening';
+    };
+
+    const InitialsAvatar = ({ name, size = 32 }: { name: string, size?: number }) => {
+        const { colors } = useTheme();
+        return (
+            <View
+                style={{
+                    width: size,
+                    height: size,
+                    borderRadius: size / 2.8,
+                    backgroundColor: colors.accentBg,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    borderWidth: 1.5,
+                    borderColor: colors.accent + '25',
+                }}
+            >
+                <Text style={{ color: colors.accent, fontWeight: '800', fontSize: size * 0.44 }}>
+                    {name?.charAt(0).toUpperCase() || '?'}
+                </Text>
+            </View>
+        );
+    };
 
     return (
-        <View style={[styles.container, { paddingTop: insets.top + (Platform.OS === 'android' ? 10 : 0) }]}>
+        <View style={[styles.container, {
+            paddingTop: insets.top + (Platform.OS === 'android' ? 12 : 4),
+            backgroundColor: colors.card,
+            borderBottomColor: colors.border,
+        }]}>
+            {/* Top row: workspace + actions */}
+            <View style={styles.topRow}>
+                {/* Left: Back or Workspace */}
+                {showBack ? (
+                    <TouchableOpacity
+                        style={[styles.backButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
+                        onPress={() => router.back()}
+                    >
+                        <ArrowLeft size={20} color={colors.text} />
+                    </TouchableOpacity>
+                ) : (
+                    <TouchableOpacity
+                        style={[styles.workspaceButton, { backgroundColor: isDark ? colors.surface : colors.background, borderColor: colors.border }]}
+                        onPress={() => setShowWorkspaceMenu(true)}
+                        activeOpacity={0.7}
+                    >
+                        <View style={styles.workspaceLogoWrap}>
+                            {currentWorkspace?.logo_url ? (
+                                <Image source={{ uri: currentWorkspace.logo_url }} style={styles.workspaceLogo} />
+                            ) : (
+                                <InitialsAvatar name={currentWorkspace?.name || 'W'} size={32} />
+                            )}
+                        </View>
+                        <View style={styles.workspaceTextBlock}>
+                            <Text style={[styles.workspaceGreeting, { color: colors.textTertiary }]}>
+                                {getGreeting()}
+                            </Text>
+                            <Text style={[styles.workspaceUserName, { color: colors.text }]} numberOfLines={1}>
+                                {userName || user?.email?.split('@')[0] || 'User'}
+                            </Text>
+                        </View>
+                        <ChevronDown size={14} color={colors.textTertiary} style={{ marginLeft: 4 }} />
+                    </TouchableOpacity>
+                )}
 
-            {/* Left: Workspace Selector */}
-            {showBack ? (
-                <TouchableOpacity
-                    style={styles.backButton}
-                    onPress={() => router.back()}
-                >
-                    <ArrowLeft size={24} color="#0F172A" />
-                </TouchableOpacity>
-            ) : (
-                <TouchableOpacity
-                    style={styles.workspaceButton}
-                    onPress={() => setShowWorkspaceMenu(true)}
-                >
-                    <View style={styles.workspaceLogoContainer}>
-                        {currentWorkspace?.logo_url ? (
-                            <Image source={{ uri: currentWorkspace.logo_url }} style={styles.workspaceLogo} />
-                        ) : (
-                            <InitialsAvatar name={currentWorkspace?.name || 'W'} size={36} />
+                {/* Right: Actions */}
+                <View style={styles.actionsRow}>
+                    <TouchableOpacity
+                        style={[styles.actionBtn, { backgroundColor: isDark ? colors.surface : colors.background, shadowColor: isDark ? '#000' : colors.shadow }]}
+                        onPress={() => router.push('/notifications' as any)}
+                        activeOpacity={0.8}
+                    >
+                        <Bell size={19} color={unreadCount > 0 ? colors.accent : colors.textTertiary} />
+                        {unreadCount > 0 && (
+                            <View style={[styles.notifBadge, { borderColor: colors.card }]}>
+                                <Text style={styles.notifBadgeText}>
+                                    {unreadCount > 99 ? '99+' : unreadCount}
+                                </Text>
+                            </View>
                         )}
-                    </View>
-                    <View>
-                        <Text style={styles.workspaceLabel}>Workspace</Text>
-                        <View style={styles.workspaceNameContainer}>
-                            <Text style={styles.workspaceName} numberOfLines={1}>
-                                {currentWorkspace?.name || 'Select Workspace'}
-                            </Text>
-                            <ChevronDown size={14} color="#64748B" />
-                        </View>
-                    </View>
-                </TouchableOpacity>
-            )}
+                    </TouchableOpacity>
 
-            {/* Right: Actions */}
-            <View style={styles.actionsContainer}>
-                <TouchableOpacity
-                    style={styles.headerBtn}
-                    onPress={() => router.push('/notifications' as any)}
-                    activeOpacity={0.7}
-                >
-                    <Bell size={20} color={unreadCount > 0 ? "#0F172A" : "#64748B"} />
-                    {unreadCount > 0 && (
-                        <View style={styles.premiumBadge}>
-                            <Text style={styles.premiumBadgeText}>
-                                {unreadCount > 99 ? '99+' : unreadCount}
-                            </Text>
-                        </View>
-                    )}
-                </TouchableOpacity>
+                    <TouchableOpacity
+                        style={[styles.profileBtn, { shadowColor: isDark ? '#000' : colors.shadow }]}
+                        onPress={() => setShowProfileMenu(true)}
+                        activeOpacity={0.8}
+                    >
+                        {userAvatar ? (
+                            <Image source={{ uri: userAvatar }} style={styles.profileAvatarImg} />
+                        ) : (
+                            <View style={[styles.profileAvatar, { backgroundColor: colors.accentBg }]}>
+                                <User size={10} color={colors.accent} />
+                            </View>
+                        )}
+                    </TouchableOpacity>
 
-                <TouchableOpacity onPress={() => setShowProfileMenu(true)}>
-                    <View style={styles.profileContainer}>
-                        <View style={styles.profileAvatar}>
-                            <User size={20} color="#F97316" />
-                        </View>
-                    </View>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                    style={styles.headerBtn}
-                    onPress={() => router.push('/menu' as any)}
-                >
-                    <Menu size={20} color="#64748B" />
-                </TouchableOpacity>
+                    <TouchableOpacity
+                        style={[styles.actionBtn, { backgroundColor: isDark ? colors.surface : colors.background, shadowColor: isDark ? '#000' : colors.shadow }]}
+                        onPress={() => router.push('/menu' as any)}
+                        activeOpacity={0.8}
+                    >
+                        <Menu size={19} color={colors.textTertiary} />
+                    </TouchableOpacity>
+                </View>
             </View>
 
             {/* Workspace Menu Modal */}
@@ -133,15 +174,21 @@ export function DashboardHeader({ showBack = false }: { showBack?: boolean }) {
                     activeOpacity={1}
                     onPress={() => setShowWorkspaceMenu(false)}
                 >
-                    <View style={[styles.menuContainer, { top: insets.top + 60, left: 20 }]}>
-                        <Text style={styles.menuHeader}>Switch Workspace</Text>
+                    <View style={[styles.menuContainer, {
+                        top: insets.top + 70,
+                        left: 20,
+                        backgroundColor: colors.card,
+                        shadowColor: isDark ? '#000' : '#64748B',
+                        borderColor: colors.border,
+                    }]}>
+                        <Text style={[styles.menuHeader, { color: colors.textTertiary }]}>Switch Workspace</Text>
 
                         {workspaces.map(ws => (
                             <TouchableOpacity
                                 key={ws.id}
                                 style={[
                                     styles.menuItem,
-                                    currentWorkspace?.id === ws.id && styles.activeMenuItem
+                                    currentWorkspace?.id === ws.id && { backgroundColor: colors.accentBg }
                                 ]}
                                 onPress={() => {
                                     setCurrentWorkspaceId(ws.id);
@@ -152,35 +199,42 @@ export function DashboardHeader({ showBack = false }: { showBack?: boolean }) {
                                     {ws.logo_url ? (
                                         <Image source={{ uri: ws.logo_url }} style={styles.smallLogo} />
                                     ) : (
-                                        <View style={styles.smallLogoPlaceholder}>
-                                            <Text style={styles.smallLogoText}>{ws.name.charAt(0)}</Text>
+                                        <View style={[styles.smallLogoPlaceholder, {
+                                            backgroundColor: colors.surface,
+                                            borderColor: colors.border,
+                                        }]}>
+                                            <Text style={[styles.smallLogoText, { color: colors.textTertiary }]}>{ws.name.charAt(0)}</Text>
                                         </View>
                                     )}
                                     <Text style={[
                                         styles.menuItemText,
-                                        currentWorkspace?.id === ws.id && styles.activeMenuItemText
+                                        { color: currentWorkspace?.id === ws.id ? colors.accent : colors.text }
                                     ]}>
                                         {ws.name}
                                     </Text>
                                 </View>
-                                {currentWorkspace?.id === ws.id && <Check size={16} color="#F97316" />}
+                                {currentWorkspace?.id === ws.id && <Check size={16} color={colors.accent} />}
                             </TouchableOpacity>
                         ))}
 
-                        <View style={styles.menuDivider} />
+                        <View style={[styles.menuDivider, { backgroundColor: colors.border }]} />
 
                         <TouchableOpacity
                             style={styles.menuItem}
                             onPress={() => {
                                 setShowWorkspaceMenu(false);
-                                // Navigate to create workspace
-                                router.push('/onboarding'); // Or specific create screen
+                                router.push('/create-workspace' as any);
                             }}
                         >
-                            <View style={[styles.smallLogoPlaceholder, { backgroundColor: '#F1F5F9', borderColor: '#E2E8F0' }]}>
-                                <Plus size={16} color="#64748B" />
+                            <View style={styles.menuItemLeft}>
+                                <View style={[styles.smallLogoPlaceholder, {
+                                    backgroundColor: colors.accentBg,
+                                    borderColor: colors.accent + '30',
+                                }]}>
+                                    <Plus size={14} color={colors.accent} />
+                                </View>
+                                <Text style={[styles.menuItemText, { color: colors.accent }]}>Create Workspace</Text>
                             </View>
-                            <Text style={styles.menuItemText}>Create Workspace</Text>
                         </TouchableOpacity>
                     </View>
                 </TouchableOpacity>
@@ -198,32 +252,51 @@ export function DashboardHeader({ showBack = false }: { showBack?: boolean }) {
                     activeOpacity={1}
                     onPress={() => setShowProfileMenu(false)}
                 >
-                    <View style={[styles.menuContainer, { top: insets.top + 60, right: 20 }]}>
+                    <View style={[styles.menuContainer, {
+                        top: insets.top + 70,
+                        right: 20,
+                        backgroundColor: colors.card,
+                        shadowColor: isDark ? '#000' : '#64748B',
+                        borderColor: colors.border,
+                    }]}>
                         <View style={styles.profileHeader}>
-                            <View style={styles.profileAvatarLarge}>
-                                <Text style={styles.profileInitialsLarge}>
-                                    {user?.email?.charAt(0).toUpperCase()}
-                                </Text>
-                            </View>
-                            <View>
-                                <Text style={styles.profileName}>{user?.email?.split('@')[0]}</Text>
-                                <Text style={styles.profileEmail}>{user?.email}</Text>
+                            {userAvatar ? (
+                                <Image source={{ uri: userAvatar }} style={styles.profileAvatarLargeImg} />
+                            ) : (
+                                <View style={[styles.profileAvatarLarge, { backgroundColor: colors.accentBg }]}>
+                                    <Text style={[styles.profileInitialsLarge, { color: colors.accent }]}>
+                                        {(userName || user?.email)?.charAt(0).toUpperCase()}
+                                    </Text>
+                                </View>
+                            )}
+                            <View style={{ flex: 1 }}>
+                                <Text style={[styles.profileName, { color: colors.text }]} numberOfLines={1}>{userName || user?.email?.split('@')[0]}</Text>
+                                <Text style={[styles.profileEmail, { color: colors.textTertiary }]} numberOfLines={1}>{user?.email}</Text>
                             </View>
                         </View>
 
-                        <View style={styles.menuDivider} />
+                        <View style={[styles.menuDivider, { backgroundColor: colors.border }]} />
 
                         <TouchableOpacity style={styles.menuItem} onPress={() => { setShowProfileMenu(false); router.push('/settings' as any); }}>
-                            <Settings size={20} color="#64748B" />
-                            <Text style={[styles.menuItemText, { marginLeft: 12 }]}>Settings</Text>
+                            <View style={styles.menuItemLeft}>
+                                <View style={[styles.menuIconWrap, { backgroundColor: isDark ? colors.surface : '#EFF6FF' }]}>
+                                    <Settings size={16} color={isDark ? colors.textSecondary : '#3B82F6'} />
+                                </View>
+                                <Text style={[styles.menuItemText, { color: colors.text }]}>Settings</Text>
+                            </View>
+                            <ChevronDown size={14} color={colors.textTertiary} style={{ transform: [{ rotate: '-90deg' }] }} />
                         </TouchableOpacity>
 
                         <TouchableOpacity
-                            style={[styles.menuItem, { marginTop: 8 }]}
+                            style={[styles.menuItem, { marginTop: 2 }]}
                             onPress={handleSignOut}
                         >
-                            <LogOut size={20} color="#EF4444" />
-                            <Text style={[styles.menuItemText, { marginLeft: 12, color: '#EF4444' }]}>Log Out</Text>
+                            <View style={styles.menuItemLeft}>
+                                <View style={[styles.menuIconWrap, { backgroundColor: isDark ? '#2D1515' : '#FEF2F2' }]}>
+                                    <LogOut size={16} color="#EF4444" />
+                                </View>
+                                <Text style={[styles.menuItemText, { color: colors.error }]}>Log Out</Text>
+                            </View>
                         </TouchableOpacity>
                     </View>
                 </TouchableOpacity>
@@ -235,215 +308,220 @@ export function DashboardHeader({ showBack = false }: { showBack?: boolean }) {
 
 const styles = StyleSheet.create({
     container: {
+        paddingHorizontal: 16,
+        paddingBottom: 14,
+        borderBottomWidth: 1,
+        zIndex: 50,
+    },
+    topRow: {
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
-        paddingHorizontal: 20,
-        paddingBottom: 20,
-        backgroundColor: '#FFFFFF',
-        borderBottomWidth: 1,
-        borderBottomColor: '#E2E8F0',
-        zIndex: 50,
     },
+    // ─── Back button ──────────────────────
+    backButton: {
+        width: 42,
+        height: 42,
+        borderRadius: 14,
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderWidth: 1,
+    },
+    // ─── Workspace selector ───────────────
     workspaceButton: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 12,
+        gap: 10,
+        paddingVertical: 6,
+        paddingHorizontal: 8,
+        paddingRight: 10,
+        borderRadius: 14,
+        borderWidth: 1,
     },
-    workspaceLogoContainer: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.05,
-        shadowRadius: 4,
-        elevation: 2,
+    workspaceLogoWrap: {
+        ...Platform.select({
+            ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 4 },
+            android: { elevation: 1 },
+        }),
     },
     workspaceLogo: {
-        width: 36,
-        height: 36,
+        width: 32,
+        height: 32,
         borderRadius: 10,
         backgroundColor: '#F1F5F9',
     },
-    workspaceLabel: {
+    workspaceTextBlock: {
+        justifyContent: 'center',
+    },
+    workspaceGreeting: {
         fontSize: 10,
         fontWeight: '600',
-        color: '#94A3B8',
-        textTransform: 'uppercase',
-        letterSpacing: 0.5,
+        letterSpacing: 0.3,
+        marginBottom: 1,
     },
-    workspaceNameContainer: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 4,
-    },
-    workspaceName: {
-        fontSize: 16,
+    workspaceUserName: {
+        fontSize: 15,
         fontWeight: '700',
-        color: '#0F172A',
-        maxWidth: 160,
+        maxWidth: 140,
     },
-    actionsContainer: {
+    // ─── Action buttons ───────────────────
+    actionsRow: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 16,
+        gap: 10,
     },
-    headerBtn: {
+    actionBtn: {
         position: 'relative',
-        width: 40,
-        height: 40,
-        borderRadius: 12,
-        backgroundColor: '#F8FAFC',
+        width: 38,
+        height: 38,
+        borderRadius: 19,
         alignItems: 'center',
         justifyContent: 'center',
-        borderWidth: 1,
-        borderColor: '#F1F5F9',
+        ...Platform.select({
+            ios: { shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 4 },
+            android: { elevation: 2 },
+        }),
     },
-    premiumBadge: {
+    notifBadge: {
         position: 'absolute',
-        top: -4,
-        right: -4,
-        minWidth: 18,
-        height: 18,
-        borderRadius: 9,
-        backgroundColor: '#EF4444',
+        top: -5,
+        right: -5,
+        minWidth: 20,
+        height: 20,
+        borderRadius: 10,
+        backgroundColor: '#056805ff',
         alignItems: 'center',
         justifyContent: 'center',
-        borderWidth: 2,
-        borderColor: '#FFFFFF',
+        borderWidth: 2.5,
         paddingHorizontal: 4,
     },
-    premiumBadgeText: {
+    notifBadgeText: {
         fontSize: 10,
-        fontWeight: '700',
+        fontWeight: '800',
         color: '#FFFFFF',
     },
-    profileContainer: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 4,
-        elevation: 2,
+    profileBtn: {
+        borderRadius: 21,
+        overflow: 'hidden',
+        ...Platform.select({
+            ios: { shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4 },
+            android: { elevation: 2 },
+        }),
     },
     profileAvatar: {
-        width: 36,
-        height: 36,
-        borderRadius: 12,
-        backgroundColor: '#FFF7ED',
+        width: 42,
+        height: 42,
+        borderRadius: 21,
         alignItems: 'center',
         justifyContent: 'center',
-        borderWidth: 1,
-        borderColor: '#FFEDD5',
     },
-    // Modal Styles
+    profileAvatarImg: {
+        width: 42,
+        height: 42,
+        borderRadius: 21,
+    },
+    // ─── Modal styles ─────────────────────
     modalOverlay: {
         flex: 1,
-        backgroundColor: 'rgba(15, 23, 42, 0.2)',
+        backgroundColor: 'rgba(15, 23, 42, 0.25)',
     },
     menuContainer: {
         position: 'absolute',
-        width: 280,
-        backgroundColor: '#FFFFFF',
+        width: 290,
         borderRadius: 20,
-        padding: 8,
-        shadowColor: '#0F172A',
-        shadowOffset: { width: 0, height: 10 },
-        shadowOpacity: 0.15,
-        shadowRadius: 20,
-        elevation: 10,
+        padding: 6,
+        borderWidth: 1,
+        ...Platform.select({
+            ios: { shadowOffset: { width: 0, height: 12 }, shadowOpacity: 0.12, shadowRadius: 24 },
+            android: { elevation: 12 },
+        }),
     },
     menuHeader: {
-        fontSize: 12,
+        fontSize: 11,
         fontWeight: '700',
-        color: '#94A3B8',
-        marginBottom: 8,
-        marginLeft: 8,
-        marginTop: 8,
         textTransform: 'uppercase',
+        letterSpacing: 0.6,
+        marginBottom: 6,
+        marginLeft: 12,
+        marginTop: 10,
     },
     menuItem: {
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
-        paddingVertical: 10,
+        paddingVertical: 11,
         paddingHorizontal: 12,
-        borderRadius: 12,
-    },
-    activeMenuItem: {
-        backgroundColor: '#FFF7ED',
+        borderRadius: 14,
     },
     menuItemLeft: {
         flexDirection: 'row',
         alignItems: 'center',
         gap: 12,
+        flex: 1,
     },
-    smallLogo: {
-        width: 24,
-        height: 24,
-        borderRadius: 6,
-    },
-    smallLogoPlaceholder: {
-        width: 24,
-        height: 24,
-        borderRadius: 6,
-        backgroundColor: '#E2E8F0',
+    menuIconWrap: {
+        width: 32,
+        height: 32,
+        borderRadius: 10,
         alignItems: 'center',
         justifyContent: 'center',
     },
+    smallLogo: {
+        width: 28,
+        height: 28,
+        borderRadius: 8,
+    },
+    smallLogoPlaceholder: {
+        width: 28,
+        height: 28,
+        borderRadius: 8,
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderWidth: 1,
+    },
     smallLogoText: {
-        fontSize: 12,
+        fontSize: 13,
         fontWeight: '700',
-        color: '#64748B',
     },
     menuItemText: {
-        fontSize: 14,
+        fontSize: 15,
         fontWeight: '600',
-        color: '#334155',
-    },
-    activeMenuItemText: {
-        color: '#F97316',
     },
     menuDivider: {
         height: 1,
-        backgroundColor: '#E2E8F0',
         marginVertical: 4,
-        marginHorizontal: 8,
+        marginHorizontal: 10,
     },
     profileHeader: {
         flexDirection: 'row',
         alignItems: 'center',
         gap: 12,
-        padding: 12,
-        paddingBottom: 8,
+        padding: 14,
+        paddingBottom: 10,
     },
     profileAvatarLarge: {
         width: 48,
         height: 48,
         borderRadius: 16,
-        backgroundColor: '#F1F5F9',
         alignItems: 'center',
         justifyContent: 'center',
     },
+    profileAvatarLargeImg: {
+        width: 48,
+        height: 48,
+        borderRadius: 16,
+    },
     profileInitialsLarge: {
         fontSize: 20,
-        fontWeight: '700',
-        color: '#64748B',
+        fontWeight: '800',
     },
     profileName: {
         fontSize: 16,
         fontWeight: '700',
-        color: '#0F172A',
     },
     profileEmail: {
         fontSize: 12,
-        color: '#64748B',
-    },
-    backButton: {
-        width: 40,
-        height: 40,
-        borderRadius: 12,
-        backgroundColor: '#F8FAFC',
-        alignItems: 'center',
-        justifyContent: 'center',
-        borderWidth: 1,
-        borderColor: '#F1F5F9',
+        fontWeight: '500',
+        marginTop: 1,
     },
 });

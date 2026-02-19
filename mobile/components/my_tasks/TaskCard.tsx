@@ -1,158 +1,208 @@
 import React, { useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Animated as RNAnimated, Dimensions, PanResponder, Image } from 'react-native';
-import { ChevronRight, Flag, Calendar, MessageSquare, Clock, CheckCircle2 } from 'lucide-react-native';
-import { format, isPast, isToday } from 'date-fns';
-import Animated, { FadeInDown } from 'react-native-reanimated';
-
-const SCREEN_WIDTH = Dimensions.get('window').width;
+import {
+    View, Text, StyleSheet, TouchableOpacity,
+    Animated as RNAnimated, PanResponder, Platform,
+} from 'react-native';
+import { Flag, Calendar, CheckCircle2, Circle } from 'lucide-react-native';
+import { format, isPast, isToday, parseISO } from 'date-fns';
+import { useTheme } from '@/contexts/ThemeContext';
 
 interface TaskCardProps {
     task: any;
     onPress: () => void;
     onComplete: () => void;
     onChangeStatus: () => void;
-    index: number;
+    index?: number;
 }
 
-const PRIORITY_COLORS: Record<string, string> = {
-    urgent: '#EF4444',
-    high: '#F97316',
-    medium: '#EAB308',
-    low: '#94A3B8',
+const STATUS_CONFIG: Record<string, { color: string; bg: string; bgDark: string }> = {
+    todo: { color: '#94A3B8', bg: '#F8FAFC', bgDark: '#1E293B' },
+    in_progress: { color: '#3B82F6', bg: '#EFF6FF', bgDark: '#1E3A8A' },
+    review: { color: '#F59E0B', bg: '#FFFBEB', bgDark: '#78350F' },
+    done: { color: '#10B981', bg: '#F0FDF4', bgDark: '#065F46' },
 };
 
-export function TaskCard({ task, onPress, onComplete, onChangeStatus, index }: TaskCardProps) {
-    const priorityColor = PRIORITY_COLORS[task.priority] || PRIORITY_COLORS.medium;
-    const isOverdue = task.due_date && isPast(new Date(task.due_date)) && !isToday(new Date(task.due_date));
-    const isTodayDue = task.due_date && isToday(new Date(task.due_date));
+const PRIORITY_CONFIG: Record<string, { color: string; bg: string; bgDark: string; label: string }> = {
+    urgent: { color: '#EF4444', bg: '#FEF2F2', bgDark: '#2D1515', label: 'Urgent' },
+    high:   { color: '#F97316', bg: '#FFF7ED', bgDark: '#2D1A08', label: 'High' },
+    medium: { color: '#EAB308', bg: '#FEFCE8', bgDark: '#2D2808', label: 'Medium' },
+    low:    { color: '#94A3B8', bg: '#F8FAFC', bgDark: '#1E293B', label: 'Low' },
+};
 
-    // Swipe Logic
+export function TaskCard({ task, onPress, onComplete, onChangeStatus }: TaskCardProps) {
+    const { colors, colorScheme } = useTheme();
+    const isDark = colorScheme === 'dark';
+
+    const pConfig = PRIORITY_CONFIG[task.priority] || PRIORITY_CONFIG.low;
+    const dueDate = task.due_date ? parseISO(task.due_date) : null;
+    const isOverdue = dueDate && isPast(dueDate) && !isToday(dueDate) && !task.is_completed;
+    const isTodayDue = dueDate && isToday(dueDate) && !task.is_completed;
+
     const pan = useRef(new RNAnimated.ValueXY()).current;
 
-    // Reset position if released without trigger
     const resetPosition = () => {
         RNAnimated.spring(pan, { toValue: { x: 0, y: 0 }, useNativeDriver: false }).start();
     };
 
     const panResponder = useRef(
         PanResponder.create({
-            onMoveShouldSetPanResponder: (evt, gestureState) => {
-                return Math.abs(gestureState.dx) > Math.abs(gestureState.dy * 2) && Math.abs(gestureState.dx) > 10;
-            },
+            // Only claim the gesture if it's clearly horizontal — never block vertical scroll
+            onStartShouldSetPanResponder: () => false,
+            onStartShouldSetPanResponderCapture: () => false,
+            onMoveShouldSetPanResponder: (_e, g) =>
+                Math.abs(g.dx) > Math.abs(g.dy * 3) && Math.abs(g.dx) > 20,
+            onMoveShouldSetPanResponderCapture: (_e, g) =>
+                Math.abs(g.dx) > Math.abs(g.dy * 3) && Math.abs(g.dx) > 20,
             onPanResponderMove: RNAnimated.event([null, { dx: pan.x }], { useNativeDriver: false }),
-            onPanResponderRelease: (evt, gestureState) => {
-                if (gestureState.dx > 100) {
-                    // Swiped Right -> Complete
-                    onComplete();
-                    resetPosition(); // Or animate out
-                } else if (gestureState.dx < -100) {
-                    // Swiped Left -> Change Status
-                    onChangeStatus();
-                    resetPosition();
-                } else {
-                    resetPosition();
-                }
+            onPanResponderRelease: (_e, g) => {
+                if (g.dx > 80) { onComplete(); resetPosition(); }
+                else if (g.dx < -80) { onChangeStatus(); resetPosition(); }
+                else resetPosition();
             },
         })
     ).current;
 
-    const completeOpacity = pan.x.interpolate({
-        inputRange: [0, 100],
-        outputRange: [0, 1],
-        extrapolate: 'clamp',
-    });
-
-    const statusOpacity = pan.x.interpolate({
-        inputRange: [-100, 0],
-        outputRange: [1, 0],
-        extrapolate: 'clamp',
-    });
+    const completeOpacity = pan.x.interpolate({ inputRange: [0, 80], outputRange: [0, 1], extrapolate: 'clamp' });
+    const statusOpacity   = pan.x.interpolate({ inputRange: [-80, 0], outputRange: [1, 0], extrapolate: 'clamp' });
+    const cardScale       = pan.x.interpolate({ inputRange: [-80, 0, 80], outputRange: [0.97, 1, 0.97], extrapolate: 'clamp' });
 
     return (
-        <Animated.View entering={FadeInDown.delay(index * 50).springify()} style={styles.container}>
-            {/* Background Actions */}
+        <View style={styles.wrapper}>
+            {/* Swipe action backgrounds */}
             <View style={styles.actionLayer}>
                 <RNAnimated.View style={[styles.actionLeft, { opacity: completeOpacity }]}>
-                    <CheckCircle2 size={24} color="#FFF" />
+                    <CheckCircle2 size={20} color="#FFF" />
                     <Text style={styles.actionText}>Complete</Text>
                 </RNAnimated.View>
                 <RNAnimated.View style={[styles.actionRight, { opacity: statusOpacity }]}>
                     <Text style={styles.actionText}>Status</Text>
-                    <Clock size={24} color="#FFF" />
+                    <Flag size={20} color="#FFF" />
                 </RNAnimated.View>
             </View>
 
-            {/* Foreground Card */}
+            {/* Card */}
             <RNAnimated.View
                 {...panResponder.panHandlers}
-                style={[styles.card, { transform: [{ translateX: pan.x }] }]}
+                style={[
+                    styles.card,
+                    {
+                        backgroundColor: colors.card,
+                        borderColor: colors.border,
+                        shadowColor: colors.shadow,
+                        transform: [{ translateX: pan.x }, { scale: cardScale }],
+                    },
+                    task.is_completed && { opacity: 0.6 },
+                ]}
+                accessible={true}
+                accessibilityLabel={`Task: ${task.title}`}
+                accessibilityHint="Swipe right to complete, swipe left to change status, or tap to view details"
             >
-                <TouchableOpacity onPress={onPress} activeOpacity={0.9} style={styles.touchable}>
-                    <View style={[styles.priorityLine, { backgroundColor: priorityColor }]} />
+                <TouchableOpacity onPress={onPress} activeOpacity={0.85} style={styles.touchable}>
+                    {/* Priority accent bar */}
+                    <View style={[styles.accentBar, { backgroundColor: task.is_completed ? colors.border : pConfig.color }]} />
 
                     <View style={styles.content}>
-                        <View style={styles.header}>
-                            <Text style={[styles.title, task.is_completed && styles.completedTitle]} numberOfLines={1}>
+                        {/* Top row: checkbox + title */}
+                        <View style={styles.topRow}>
+                            <TouchableOpacity 
+                                onPress={onComplete} 
+                                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} 
+                                style={styles.checkBtn}
+                                accessible={true}
+                                accessibilityLabel={task.is_completed ? 'Mark as incomplete' : 'Mark as complete'}
+                                accessibilityRole="checkbox"
+                                accessibilityState={{ checked: task.is_completed }}
+                            >
+                                {task.is_completed
+                                    ? <CheckCircle2 size={20} color={colors.secondary} />
+                                    : <Circle size={20} color={colors.border} />
+                                }
+                            </TouchableOpacity>
+                            <Text
+                                style={[
+                                    styles.title,
+                                    { color: colors.text },
+                                    task.is_completed && { textDecorationLine: 'line-through', color: colors.textMuted },
+                                ]}
+                                numberOfLines={2}
+                            >
                                 {task.title}
                             </Text>
-                            {task.assigned_to && (
-                                <View style={styles.avatar}>
-                                    <Text style={styles.avatarText}>A</Text>
-                                </View>
-                            )}
                         </View>
 
+                        {/* Bottom row: tags */}
                         <View style={styles.metaRow}>
-                            {/* Project Tag */}
-                            {task.project && (
-                                <View style={styles.tag}>
-                                    <View style={[styles.dot, { backgroundColor: task.project.color || '#6366F1' }]} />
-                                    <Text style={styles.tagText}>{task.project.name}</Text>
-                                </View>
-                            )}
-
-                            {/* Due Date */}
-                            {task.due_date && (
+                            {/* Status */}
+                            {task.status_name && !task.is_completed && (
                                 <View style={[
                                     styles.tag,
-                                    isOverdue && styles.tagOverdue,
-                                    isTodayDue && styles.tagToday
+                                    {
+                                        backgroundColor: task.status_color ? (task.status_color + '20') : (isDark ? (STATUS_CONFIG[task.status]?.bgDark || colors.surface) : (STATUS_CONFIG[task.status]?.bg || '#F8FAFC')),
+                                        borderColor: task.status_color ? (task.status_color + '50') : ((STATUS_CONFIG[task.status]?.color || colors.textTertiary) + '40'),
+                                    },
                                 ]}>
-                                    <Calendar size={12} color={isOverdue ? '#EF4444' : isTodayDue ? '#F59E0B' : '#64748B'} />
-                                    <Text style={[
-                                        styles.tagText,
-                                        isOverdue && { color: '#EF4444' },
-                                        isTodayDue && { color: '#F59E0B' }
-                                    ]}>
-                                        {format(new Date(task.due_date), 'MMM d')}
+                                    <View style={[styles.dot, { backgroundColor: task.status_color || STATUS_CONFIG[task.status]?.color || colors.textTertiary }]} />
+                                    <Text style={[styles.tagText, { color: task.status_color || STATUS_CONFIG[task.status]?.color || colors.textSecondary }]} numberOfLines={1}>
+                                        {task.status_name.replace(/_/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())}
                                     </Text>
                                 </View>
                             )}
 
-                            {/* Priority */}
-                            <View style={styles.tag}>
-                                <Flag size={12} color={priorityColor} />
-                            </View>
+                            {/* Project */}
+                            {task.project && (
+                                <View style={[styles.tag, { backgroundColor: isDark ? colors.surface : '#F8FAFC', borderColor: colors.borderLight }]}>
+                                    <View style={[styles.dot, { backgroundColor: task.project.color || '#6366F1' }]} />
+                                    <Text style={[styles.tagText, { color: colors.textSecondary }]} numberOfLines={1}>
+                                        {task.project.name}
+                                    </Text>
+                                </View>
+                            )}
+
+                            {/* Due date */}
+                            {task.due_date && (
+                                <View style={[
+                                    styles.tag,
+                                    { backgroundColor: isDark ? colors.surface : '#F8FAFC', borderColor: colors.borderLight },
+                                    isOverdue && { backgroundColor: isDark ? '#2D1515' : '#FEF2F2', borderColor: isDark ? '#7F1D1D' : '#FECACA' },
+                                    isTodayDue && { backgroundColor: isDark ? '#2D2008' : '#FFFBEB', borderColor: isDark ? '#78350F' : '#FDE68A' },
+                                ]}>
+                                    <Calendar size={11} color={isOverdue ? '#EF4444' : isTodayDue ? '#F59E0B' : colors.textTertiary} />
+                                    <Text style={[
+                                        styles.tagText,
+                                        { color: isOverdue ? '#EF4444' : isTodayDue ? '#F59E0B' : colors.textSecondary },
+                                    ]}>
+                                        {isOverdue ? 'Overdue' : isTodayDue ? 'Today' : dueDate ? format(dueDate, 'MMM d') : ''}
+                                    </Text>
+                                </View>
+                            )}
+
+                            {/* Priority badge */}
+                            {task.priority && task.priority !== 'low' && (
+                                <View style={[
+                                    styles.tag,
+                                    { backgroundColor: isDark ? pConfig.bgDark : pConfig.bg, borderColor: pConfig.color + '40' },
+                                ]}>
+                                    <Flag size={11} color={pConfig.color} />
+                                    <Text style={[styles.tagText, { color: pConfig.color }]}>{pConfig.label}</Text>
+                                </View>
+                            )}
                         </View>
                     </View>
                 </TouchableOpacity>
             </RNAnimated.View>
-        </Animated.View>
+        </View>
     );
 }
 
 const styles = StyleSheet.create({
-    container: {
+    wrapper: {
         marginBottom: 12,
-        backgroundColor: '#F1F5F9',
-        borderRadius: 16,
+        borderRadius: 14,
     },
     actionLayer: {
         ...StyleSheet.absoluteFillObject,
         flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        borderRadius: 16,
+        borderRadius: 14,
         overflow: 'hidden',
     },
     actionLeft: {
@@ -165,7 +215,7 @@ const styles = StyleSheet.create({
         gap: 8,
     },
     actionRight: {
-        backgroundColor: '#3B82F6',
+        backgroundColor: '#6366F1',
         height: '100%',
         width: '50%',
         flexDirection: 'row',
@@ -179,87 +229,62 @@ const styles = StyleSheet.create({
     actionText: {
         color: '#FFF',
         fontWeight: '700',
-        fontSize: 14,
+        fontSize: 13,
     },
     card: {
-        backgroundColor: '#FFFFFF',
-        borderRadius: 16,
+        borderRadius: 14,
+        borderWidth: 1,
         overflow: 'hidden',
-        flexDirection: 'row',
-        elevation: 2,
-        shadowColor: '#64748B',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.05,
-        shadowRadius: 6,
+        minHeight: 76,
+        ...Platform.select({
+            ios: { shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 6 },
+            android: { elevation: 2 },
+        }),
     },
     touchable: {
-        flex: 1,
         flexDirection: 'row',
     },
-    priorityLine: {
-        width: 4,
-        height: '100%',
+    accentBar: {
+        width: 3,
+        minHeight: '100%',
     },
     content: {
         flex: 1,
-        padding: 16,
+        paddingHorizontal: 14,
+        paddingVertical: 14,
+        gap: 10,
     },
-    header: {
+    topRow: {
         flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        marginBottom: 8,
+        alignItems: 'flex-start',
+        gap: 10,
+    },
+    checkBtn: {
+        marginTop: 1,
     },
     title: {
-        fontSize: 16,
-        fontWeight: '600',
-        color: '#0F172A',
         flex: 1,
-        marginRight: 12,
-    },
-    completedTitle: {
-        textDecorationLine: 'line-through',
-        color: '#94A3B8',
-    },
-    avatar: {
-        width: 24,
-        height: 24,
-        borderRadius: 8,
-        backgroundColor: '#F1F5F9',
-        alignItems: 'center',
-        justifyContent: 'center',
-        borderWidth: 1,
-        borderColor: '#E2E8F0',
-    },
-    avatarText: {
-        fontSize: 10,
-        fontWeight: '700',
-        color: '#64748B',
+        fontSize: 15,
+        fontWeight: '600',
+        lineHeight: 20,
     },
     metaRow: {
         flexDirection: 'row',
         alignItems: 'center',
         flexWrap: 'wrap',
-        gap: 8,
+        gap: 7,
+        paddingLeft: 30,
+        minHeight: 24,
     },
     tag: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 6,
+        gap: 5,
         paddingVertical: 4,
-        paddingHorizontal: 8,
-        borderRadius: 8,
-        backgroundColor: '#F8FAFC',
+        paddingHorizontal: 9,
+        borderRadius: 7,
         borderWidth: 1,
-        borderColor: '#F1F5F9',
-    },
-    tagOverdue: {
-        backgroundColor: '#FEF2F2',
-        borderColor: '#FECACA',
-    },
-    tagToday: {
-        backgroundColor: '#FFFBEB',
-        borderColor: '#FDE68A',
+        height: 24,
     },
     dot: {
         width: 6,
@@ -267,8 +292,9 @@ const styles = StyleSheet.create({
         borderRadius: 3,
     },
     tagText: {
-        fontSize: 12,
+        fontSize: 11,
         fontWeight: '600',
-        color: '#64748B',
+        maxWidth: 120,
+        lineHeight: 14,
     },
 });

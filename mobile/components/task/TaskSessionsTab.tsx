@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { Clock, Trash2, Timer, Hash, CalendarDays } from 'lucide-react-native';
 import { format } from 'date-fns';
+import { useTheme } from '@/contexts/ThemeContext';
 
 import { TaskSession } from '@/hooks/useTaskTimer';
 
@@ -39,6 +40,7 @@ const formatTimeLive = (seconds: number) => {
 };
 
 export function TaskSessionsTab({ sessions, isRunning, elapsedTime, totalWorkTime, onDeleteSession }: TaskSessionsTabProps) {
+  const { colors } = useTheme();
   const handleDeletePress = (session: TaskSession) => {
     Alert.alert(
       'Delete Session',
@@ -53,36 +55,36 @@ export function TaskSessionsTab({ sessions, isRunning, elapsedTime, totalWorkTim
   const displayTotal = totalWorkTime + (isRunning ? elapsedTime : 0);
 
   return (
-    <ScrollView contentContainerStyle={styles.scrollContent} style={{ flex: 1 }}>
+    <ScrollView contentContainerStyle={styles.scrollContent} style={{ flex: 1, backgroundColor: colors.background }}>
       {sessions.length === 0 ? (
         <View style={styles.empty}>
-          <View style={styles.emptyIconWrap}>
-            <Clock size={28} color="#CBD5E1" />
+          <View style={[styles.emptyIconWrap, { backgroundColor: colors.surface }]}>
+            <Clock size={28} color={colors.textTertiary} />
           </View>
-          <Text style={styles.emptyTitle}>No sessions yet</Text>
-          <Text style={styles.emptySub}>Start the timer to track your work</Text>
+          <Text style={[styles.emptyTitle, { color: colors.textTertiary }]}>No sessions yet</Text>
+          <Text style={[styles.emptySub, { color: colors.textTertiary }]}>Start the timer to track your work</Text>
         </View>
       ) : (
         <>
           {/* Summary card */}
-          <View style={styles.summaryCard}>
+          <View style={[styles.summaryCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
             <View style={styles.summaryRow}>
               <View style={styles.summaryItem}>
                 <Timer size={14} color="#F97316" />
-                <Text style={styles.summaryLabel}>Total Time</Text>
-                <Text style={styles.summaryValue}>{formatTimeFull(displayTotal)}</Text>
+                <Text style={[styles.summaryLabel, { color: colors.textTertiary }]}>Total Time</Text>
+                <Text style={[styles.summaryValue, { color: colors.text }]}>{formatTimeFull(displayTotal)}</Text>
               </View>
-              <View style={styles.summaryDivider} />
+              <View style={[styles.summaryDivider, { backgroundColor: colors.border }]} />
               <View style={styles.summaryItem}>
                 <Hash size={14} color="#3B82F6" />
-                <Text style={styles.summaryLabel}>Sessions</Text>
-                <Text style={styles.summaryValue}>{sessions.length}</Text>
+                <Text style={[styles.summaryLabel, { color: colors.textTertiary }]}>Sessions</Text>
+                <Text style={[styles.summaryValue, { color: colors.text }]}>{sessions.length}</Text>
               </View>
-              <View style={styles.summaryDivider} />
+              <View style={[styles.summaryDivider, { backgroundColor: colors.border }]} />
               <View style={styles.summaryItem}>
                 <CalendarDays size={14} color="#8B5CF6" />
-                <Text style={styles.summaryLabel}>First</Text>
-                <Text style={styles.summaryValue}>{format(new Date(sessions[sessions.length - 1].started_at), 'MMM d')}</Text>
+                <Text style={[styles.summaryLabel, { color: colors.textTertiary }]}>First</Text>
+                <Text style={[styles.summaryValue, { color: colors.text }]}>{format(new Date(sessions[sessions.length - 1].started_at), 'MMM d')}</Text>
               </View>
             </View>
           </View>
@@ -93,7 +95,7 @@ export function TaskSessionsTab({ sessions, isRunning, elapsedTime, totalWorkTim
             return (
               <TouchableOpacity
                 key={session.id}
-                style={[styles.card, isActive && styles.cardActive]}
+                style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }, isActive && styles.cardActive]}
                 onLongPress={() => handleDeletePress(session)}
                 delayLongPress={500}
                 activeOpacity={0.7}
@@ -105,7 +107,7 @@ export function TaskSessionsTab({ sessions, isRunning, elapsedTime, totalWorkTim
                 </View>
                 <View style={{ flex: 1 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                    <Text style={styles.type}>{session.session_type === 'start' ? 'Started' : 'Resumed'}</Text>
+                    <Text style={[styles.type, { color: colors.text }]}>{session.session_type === 'start' ? 'Started' : 'Resumed'}</Text>
                     {isActive && (
                       <View style={styles.activeBadge}>
                         <View style={styles.activeDot} />
@@ -113,12 +115,12 @@ export function TaskSessionsTab({ sessions, isRunning, elapsedTime, totalWorkTim
                       </View>
                     )}
                   </View>
-                  <Text style={styles.time}>
+                  <Text style={[styles.time, { color: colors.textTertiary }]}>
                     {format(new Date(session.started_at), 'MMM d, yyyy h:mm a')}
                     {session.ended_at && ` → ${format(new Date(session.ended_at), 'h:mm a')}`}
                   </Text>
                 </View>
-                <Text style={[styles.duration, isActive && isRunning && styles.durationLive]}>
+                <Text style={[styles.duration, { color: colors.text }, isActive && isRunning && styles.durationLive]}>
                   {session.duration_seconds
                     ? formatTimeFull(session.duration_seconds)
                     : isRunning ? formatTimeLive(elapsedTime) : '-'}
@@ -127,7 +129,7 @@ export function TaskSessionsTab({ sessions, isRunning, elapsedTime, totalWorkTim
             );
           })}
 
-          <Text style={styles.hint}>Long-press a session to delete it</Text>
+          <Text style={[styles.hint, { color: colors.textTertiary }]}>Long-press a session to delete it</Text>
         </>
       )}
     </ScrollView>

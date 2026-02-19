@@ -31,6 +31,7 @@ import {
 } from 'lucide-react-native';
 import { formatDistanceToNow } from 'date-fns';
 import { supabase } from '@/lib/supabase';
+import { useTheme } from '@/contexts/ThemeContext';
 
 const getFileIcon = (fileType: string) => {
   if (fileType?.startsWith('image/')) return ImageIcon;
@@ -57,6 +58,7 @@ interface TaskDetailsTabProps {
 }
 
 export function TaskDetailsTab({ taskId, task, attachments, links, userId, onTaskUpdated, onDelete, onAttachmentsRefresh, onLinksRefresh }: TaskDetailsTabProps) {
+  const { colors } = useTheme();
   const [description, setDescription] = useState(task?.description || '');
   const [attachmentsExpanded, setAttachmentsExpanded] = useState(true);
   const [linksExpanded, setLinksExpanded] = useState(true);
@@ -208,17 +210,17 @@ export function TaskDetailsTab({ taskId, task, attachments, links, userId, onTas
   };
 
   return (
-    <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 20, paddingBottom: 100 }} keyboardShouldPersistTaps="handled">
+    <ScrollView style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={{ padding: 20, paddingBottom: 100 }} keyboardShouldPersistTaps="handled">
       {/* ─── Description ─── */}
       <View style={styles.inputGroup}>
         <View style={styles.labelRow}>
-          <AlignLeft size={14} color="#94A3B8" />
-          <Text style={styles.label}>Description</Text>
+          <AlignLeft size={14} color={colors.textTertiary} />
+          <Text style={[styles.label, { color: colors.textTertiary }]}>Description</Text>
         </View>
         <TextInput
-          style={styles.descInput}
+          style={[styles.descInput, { color: colors.text }]}
           placeholder="Add details..."
-          placeholderTextColor="#CBD5E1"
+          placeholderTextColor={colors.textTertiary}
           value={description}
           onChangeText={handleDescChange}
           multiline
@@ -228,34 +230,34 @@ export function TaskDetailsTab({ taskId, task, attachments, links, userId, onTas
       </View>
 
       {/* ─── Attachments (inline) ─── */}
-      <View style={styles.divider} />
+      <View style={[styles.divider, { backgroundColor: colors.borderLight }]} />
       <TouchableOpacity style={styles.sectionHeader} onPress={() => setAttachmentsExpanded(!attachmentsExpanded)}>
         <View style={styles.sectionHeaderLeft}>
-          <Paperclip size={14} color="#64748B" />
-          <Text style={styles.sectionTitle}>Attachments</Text>
+          <Paperclip size={14} color={colors.textSecondary} />
+          <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>Attachments</Text>
           {attachments.length > 0 && (
-            <View style={styles.sectionBadge}><Text style={styles.sectionBadgeText}>{attachments.length}</Text></View>
+            <View style={[styles.sectionBadge, { backgroundColor: colors.surface }]}><Text style={[styles.sectionBadgeText, { color: colors.textTertiary }]}>{attachments.length}</Text></View>
           )}
         </View>
-        <ChevronRight size={16} color="#94A3B8" style={{ transform: [{ rotate: attachmentsExpanded ? '90deg' : '0deg' }] }} />
+        <ChevronRight size={16} color={colors.textTertiary} style={{ transform: [{ rotate: attachmentsExpanded ? '90deg' : '0deg' }] }} />
       </TouchableOpacity>
 
       {attachmentsExpanded && (
         <View style={styles.sectionContent}>
           {attachments.length === 0 && !isUploading ? (
-            <Text style={styles.emptyText}>No attachments yet</Text>
+            <Text style={[styles.emptyText, { color: colors.textTertiary }]}>No attachments yet</Text>
           ) : (
             attachments.map(att => {
               const FileIcon = getFileIcon(att.file_type);
               const isImage = att.file_type?.startsWith('image/');
               return (
-                <View key={att.id} style={styles.fileCard}>
-                  <View style={[styles.fileIconWrap, isImage && { backgroundColor: '#FFF7ED' }]}>
-                    <FileIcon size={16} color={isImage ? '#F97316' : '#64748B'} />
+                <View key={att.id} style={[styles.fileCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                  <View style={[styles.fileIconWrap, { backgroundColor: colors.surface }, isImage && { backgroundColor: '#FFF7ED' }]}>
+                    <FileIcon size={16} color={isImage ? '#F97316' : colors.textSecondary} />
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.fileName} numberOfLines={1}>{att.file_name}</Text>
-                    <Text style={styles.fileMeta}>{formatFileSize(att.file_size)} · {formatDistanceToNow(new Date(att.created_at), { addSuffix: true })}</Text>
+                    <Text style={[styles.fileName, { color: colors.text }]} numberOfLines={1}>{att.file_name}</Text>
+                    <Text style={[styles.fileMeta, { color: colors.textTertiary }]}>{formatFileSize(att.file_size)} · {formatDistanceToNow(new Date(att.created_at), { addSuffix: true })}</Text>
                   </View>
                   {att.user_id === userId && (
                     <TouchableOpacity onPress={() => handleDeleteAttachment(att.id, att.file_name)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
@@ -274,50 +276,50 @@ export function TaskDetailsTab({ taskId, task, attachments, links, userId, onTas
           )}
           {showUploadOptions ? (
             <View style={styles.uploadOptions}>
-              <TouchableOpacity style={styles.uploadOption} onPress={handlePickDocument}>
-                <FolderOpen size={15} color="#3B82F6" /><Text style={styles.uploadOptionText}>Files</Text>
+              <TouchableOpacity style={[styles.uploadOption, { backgroundColor: colors.surface, borderColor: colors.border }]} onPress={handlePickDocument}>
+                <FolderOpen size={15} color="#3B82F6" /><Text style={[styles.uploadOptionText, { color: colors.textSecondary }]}>Files</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.uploadOption} onPress={handlePickImage}>
-                <ImageIcon size={15} color="#22C55E" /><Text style={styles.uploadOptionText}>Photos</Text>
+              <TouchableOpacity style={[styles.uploadOption, { backgroundColor: colors.surface, borderColor: colors.border }]} onPress={handlePickImage}>
+                <ImageIcon size={15} color="#22C55E" /><Text style={[styles.uploadOptionText, { color: colors.textSecondary }]}>Photos</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.uploadOption} onPress={handleTakePhoto}>
-                <Camera size={15} color="#F97316" /><Text style={styles.uploadOptionText}>Camera</Text>
+              <TouchableOpacity style={[styles.uploadOption, { backgroundColor: colors.surface, borderColor: colors.border }]} onPress={handleTakePhoto}>
+                <Camera size={15} color="#F97316" /><Text style={[styles.uploadOptionText, { color: colors.textSecondary }]}>Camera</Text>
               </TouchableOpacity>
               <TouchableOpacity onPress={() => setShowUploadOptions(false)}>
-                <X size={16} color="#94A3B8" />
+                <X size={16} color={colors.textTertiary} />
               </TouchableOpacity>
             </View>
           ) : (
             <TouchableOpacity style={styles.inlineAddBtn} onPress={() => setShowUploadOptions(true)}>
-              <Upload size={13} color="#F97316" /><Text style={styles.inlineAddText}>Upload file</Text>
+              <Upload size={13} color={colors.primary} /><Text style={[styles.inlineAddText, { color: colors.primary }]}>Upload file</Text>
             </TouchableOpacity>
           )}
         </View>
       )}
 
       {/* ─── Links (inline) ─── */}
-      <View style={styles.divider} />
+      <View style={[styles.divider, { backgroundColor: colors.borderLight }]} />
       <TouchableOpacity style={styles.sectionHeader} onPress={() => setLinksExpanded(!linksExpanded)}>
         <View style={styles.sectionHeaderLeft}>
-          <Link2 size={14} color="#64748B" />
-          <Text style={styles.sectionTitle}>Links</Text>
+          <Link2 size={14} color={colors.textSecondary} />
+          <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>Links</Text>
           {links.length > 0 && (
-            <View style={styles.sectionBadge}><Text style={styles.sectionBadgeText}>{links.length}</Text></View>
+            <View style={[styles.sectionBadge, { backgroundColor: colors.surface }]}><Text style={[styles.sectionBadgeText, { color: colors.textTertiary }]}>{links.length}</Text></View>
           )}
         </View>
-        <ChevronRight size={16} color="#94A3B8" style={{ transform: [{ rotate: linksExpanded ? '90deg' : '0deg' }] }} />
+        <ChevronRight size={16} color={colors.textTertiary} style={{ transform: [{ rotate: linksExpanded ? '90deg' : '0deg' }] }} />
       </TouchableOpacity>
 
       {linksExpanded && (
         <View style={styles.sectionContent}>
           {links.length === 0 && !showAddLinkForm ? (
-            <Text style={styles.emptyText}>No links yet</Text>
+            <Text style={[styles.emptyText, { color: colors.textTertiary }]}>No links yet</Text>
           ) : (
             links.map(link => (
-              <TouchableOpacity key={link.id} style={styles.linkCard} onPress={() => Linking.openURL(link.url)}>
+              <TouchableOpacity key={link.id} style={[styles.linkCard, { backgroundColor: colors.surface, borderColor: colors.border }]} onPress={() => Linking.openURL(link.url)}>
                 <View style={styles.linkIconWrap}><ExternalLink size={14} color="#3B82F6" /></View>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.linkTitle} numberOfLines={1}>{link.title}</Text>
+                  <Text style={[styles.linkTitle, { color: colors.text }]} numberOfLines={1}>{link.title}</Text>
                   <Text style={styles.linkUrl} numberOfLines={1}>{link.url}</Text>
                 </View>
                 {link.user_id === userId && (
@@ -329,45 +331,45 @@ export function TaskDetailsTab({ taskId, task, attachments, links, userId, onTas
             ))
           )}
           {showAddLinkForm ? (
-            <View style={styles.addLinkForm}>
-              <TextInput style={styles.addLinkInput} placeholder="Title (optional)" placeholderTextColor="#94A3B8" value={newLinkTitle} onChangeText={setNewLinkTitle} />
-              <TextInput style={styles.addLinkInput} placeholder="https://..." placeholderTextColor="#94A3B8" value={newLinkUrl} onChangeText={setNewLinkUrl} autoCapitalize="none" keyboardType="url" />
+            <View style={[styles.addLinkForm, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <TextInput style={[styles.addLinkInput, { color: colors.text, backgroundColor: colors.card, borderColor: colors.border }]} placeholder="Title (optional)" placeholderTextColor={colors.textTertiary} value={newLinkTitle} onChangeText={setNewLinkTitle} />
+              <TextInput style={[styles.addLinkInput, { color: colors.text, backgroundColor: colors.card, borderColor: colors.border }]} placeholder="https://..." placeholderTextColor={colors.textTertiary} value={newLinkUrl} onChangeText={setNewLinkUrl} autoCapitalize="none" keyboardType="url" />
               <View style={{ flexDirection: 'row', gap: 8 }}>
-                <TouchableOpacity style={styles.addLinkCancel} onPress={() => { setShowAddLinkForm(false); setNewLinkTitle(''); setNewLinkUrl(''); }}>
-                  <Text style={styles.addLinkCancelText}>Cancel</Text>
+                <TouchableOpacity style={[styles.addLinkCancel, { backgroundColor: colors.surface }]} onPress={() => { setShowAddLinkForm(false); setNewLinkTitle(''); setNewLinkUrl(''); }}>
+                  <Text style={[styles.addLinkCancelText, { color: colors.textSecondary }]}>Cancel</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={[styles.addLinkSave, (!newLinkUrl.trim() || isSubmittingLink) && { opacity: 0.4 }]} onPress={handleAddLink} disabled={!newLinkUrl.trim() || isSubmittingLink}>
+                <TouchableOpacity style={[styles.addLinkSave, { backgroundColor: colors.primary }, (!newLinkUrl.trim() || isSubmittingLink) && { opacity: 0.4 }]} onPress={handleAddLink} disabled={!newLinkUrl.trim() || isSubmittingLink}>
                   <Text style={styles.addLinkSaveText}>{isSubmittingLink ? 'Adding...' : 'Add'}</Text>
                 </TouchableOpacity>
               </View>
             </View>
           ) : (
             <TouchableOpacity style={styles.inlineAddBtn} onPress={() => setShowAddLinkForm(true)}>
-              <Plus size={13} color="#F97316" /><Text style={styles.inlineAddText}>Add link</Text>
+              <Plus size={13} color={colors.primary} /><Text style={[styles.inlineAddText, { color: colors.primary }]}>Add link</Text>
             </TouchableOpacity>
           )}
         </View>
       )}
 
       {/* ─── Meta info ─── */}
-      <View style={styles.divider} />
+      <View style={[styles.divider, { backgroundColor: colors.borderLight }]} />
       <View style={styles.metaSection}>
         {task?.creator?.full_name && (
           <View style={styles.metaRow}>
-            <Text style={styles.metaLabel}>Created by</Text>
-            <Text style={styles.metaValue}>{task.creator.full_name}</Text>
+            <Text style={[styles.metaLabel, { color: colors.textTertiary }]}>Created by</Text>
+            <Text style={[styles.metaValue, { color: colors.textSecondary }]}>{task.creator.full_name}</Text>
           </View>
         )}
         {task?.created_at && (
           <View style={styles.metaRow}>
-            <Text style={styles.metaLabel}>Created</Text>
-            <Text style={styles.metaValue}>{formatDistanceToNow(new Date(task.created_at), { addSuffix: true })}</Text>
+            <Text style={[styles.metaLabel, { color: colors.textTertiary }]}>Created</Text>
+            <Text style={[styles.metaValue, { color: colors.textSecondary }]}>{formatDistanceToNow(new Date(task.created_at), { addSuffix: true })}</Text>
           </View>
         )}
       </View>
 
       {/* ─── Delete ─── */}
-      <View style={styles.divider} />
+      <View style={[styles.divider, { backgroundColor: colors.borderLight }]} />
       <TouchableOpacity style={styles.deleteBtn} onPress={handleDeleteTask}>
         <Trash2 size={16} color="#EF4444" />
         <Text style={styles.deleteBtnText}>Delete Task</Text>

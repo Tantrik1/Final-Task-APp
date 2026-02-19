@@ -27,6 +27,7 @@ import {
 import { formatDistanceToNow, isToday, isYesterday, format } from 'date-fns';
 import { useNotifications, Notification, getNotificationDeepLink } from '@/hooks/useNotifications';
 import { ActivityItem, ActivityLog } from '@/components/ActivityItem';
+import { useTheme } from '@/contexts/ThemeContext';
 
 const { width } = Dimensions.get('window');
 
@@ -77,6 +78,7 @@ function formatTime(dateStr: string): string {
 
 const NotificationItem = ({ item, onRead }: { item: Notification; onRead: (id: string) => void }) => {
     const router = useRouter();
+    const { colors } = useTheme();
 
     const handlePress = () => {
         if (!item.is_read) {
@@ -98,7 +100,7 @@ const NotificationItem = ({ item, onRead }: { item: Notification; onRead: (id: s
 
     return (
         <TouchableOpacity
-            style={[styles.itemContainer, !item.is_read && styles.itemUnread]}
+            style={[styles.itemContainer, { backgroundColor: colors.card, borderBottomColor: colors.border }, !item.is_read && { backgroundColor: colors.primaryBg }]}
             onPress={handlePress}
             activeOpacity={0.7}
         >
@@ -107,14 +109,13 @@ const NotificationItem = ({ item, onRead }: { item: Notification; onRead: (id: s
                     {item.actor?.avatar_url ? (
                         <Image source={{ uri: item.actor.avatar_url }} style={styles.avatar} />
                     ) : (
-                        <View style={[styles.avatarPlaceholder, { backgroundColor: item.is_read ? '#F1F5F9' : '#FFF7ED' }]}>
-                            <Text style={[styles.avatarInitials, { color: item.is_read ? '#64748B' : '#F97316' }]}>
+                        <View style={[styles.avatarPlaceholder, { backgroundColor: item.is_read ? colors.surface : colors.primary + '15' }]}>
+                            <Text style={[styles.avatarInitials, { color: item.is_read ? colors.textSecondary : colors.primary }]}>
                                 {item.actor?.full_name?.charAt(0) || item.actor?.email?.charAt(0) || '?'}
                             </Text>
                         </View>
                     )}
-                    {/* Premium Badge: Solid Bg + White Icon */}
-                    <View style={[styles.iconBadge, { backgroundColor: bg }]}>
+                    <View style={[styles.iconBadge, { backgroundColor: bg, borderColor: colors.card }]}>
                         <Icon size={10} color={color} strokeWidth={3} />
                     </View>
                 </View>
@@ -122,17 +123,17 @@ const NotificationItem = ({ item, onRead }: { item: Notification; onRead: (id: s
 
             <View style={styles.itemContent}>
                 <View style={styles.itemHeader}>
-                    <Text style={[styles.itemTitle, !item.is_read && styles.itemTitleUnread]} numberOfLines={1}>
+                    <Text style={[styles.itemTitle, { color: colors.textSecondary }, !item.is_read && { color: colors.text, fontWeight: '700' }]} numberOfLines={1}>
                         {item.title}
                     </Text>
-                    <Text style={styles.itemTime}>{timeAgo}</Text>
+                    <Text style={[styles.itemTime, { color: colors.textTertiary }]}>{timeAgo}</Text>
                 </View>
-                <Text style={[styles.itemMessage, !item.is_read && styles.itemMessageUnread]} numberOfLines={2}>
+                <Text style={[styles.itemMessage, { color: colors.textTertiary }, !item.is_read && { color: colors.textSecondary, fontWeight: '500' }]} numberOfLines={2}>
                     {item.body}
                 </Text>
             </View>
 
-            {!item.is_read && <View style={styles.readIndicator} />}
+            {!item.is_read && <View style={[styles.readIndicator, { backgroundColor: colors.primary }]} />}
         </TouchableOpacity>
     );
 };
@@ -140,6 +141,7 @@ const NotificationItem = ({ item, onRead }: { item: Notification; onRead: (id: s
 // ─── Date Group Header ──────────────────────────────────────
 
 const DateGroupHeader = ({ dateStr }: { dateStr: string }) => {
+    const { colors } = useTheme();
     const date = new Date(dateStr);
     let label = '';
     if (isToday(date)) label = 'Today';
@@ -148,7 +150,7 @@ const DateGroupHeader = ({ dateStr }: { dateStr: string }) => {
 
     return (
         <View style={styles.dateGroupHeader}>
-            <Text style={styles.dateGroupText}>{label}</Text>
+            <Text style={[styles.dateGroupText, { color: colors.textTertiary }]}>{label}</Text>
         </View>
     );
 };
@@ -160,6 +162,7 @@ const DateGroupHeader = ({ dateStr }: { dateStr: string }) => {
 export default function NotificationsScreen() {
     const insets = useSafeAreaInsets();
     const router = useRouter();
+    const { colors, colorScheme } = useTheme();
     const [activeTab, setActiveTab] = useState(0);
     const [statusFilter, setStatusFilter] = useState<'all' | 'unread' | 'read'>('all');
 
@@ -295,30 +298,29 @@ export default function NotificationsScreen() {
 
     const renderHeader = () => (
         <>
-            <View style={styles.header}>
+            <View style={[styles.header, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
                 <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-                    <ChevronLeft size={24} color="#0F172A" />
+                    <ChevronLeft size={24} color={colors.text} />
                 </TouchableOpacity>
-                <Text style={styles.headerTitle}>Notifications</Text>
-                {/* Improved Mark all as read button visibility */}
+                <Text style={[styles.headerTitle, { color: colors.text }]}>Notifications</Text>
                 <TouchableOpacity
                     onPress={() => markAllAsRead()}
-                    style={styles.markReadButton}
+                    style={[styles.markReadButton, { backgroundColor: colors.primary + '15' }]}
                 >
-                    <CheckCircle2 size={16} color="#F97316" />
-                    <Text style={styles.markReadText}>Mark all read</Text>
+                    <CheckCircle2 size={16} color={colors.primary} />
+                    <Text style={[styles.markReadText, { color: colors.primary }]}>Mark all read</Text>
                 </TouchableOpacity>
             </View>
 
             {/* Status Filters (Seen / Unseen) */}
-            <View style={styles.statusFilterContainer}>
+            <View style={[styles.statusFilterContainer, { backgroundColor: colors.card }]}>
                 {(['all', 'unread', 'read'] as const).map((filter) => (
                     <TouchableOpacity
                         key={filter}
-                        style={[styles.statusChip, statusFilter === filter && styles.activeStatusChip]}
+                        style={[styles.statusChip, { backgroundColor: colors.surface }, statusFilter === filter && { backgroundColor: colors.text }]}
                         onPress={() => setStatusFilter(filter)}
                     >
-                        <Text style={[styles.statusChipText, statusFilter === filter && styles.activeStatusChipText]}>
+                        <Text style={[styles.statusChipText, { color: colors.textSecondary }, statusFilter === filter && { color: colors.background }]}>
                             {filter === 'all' ? 'All' : filter === 'unread' ? 'Unread' : 'Read'}
                         </Text>
                     </TouchableOpacity>
@@ -326,7 +328,7 @@ export default function NotificationsScreen() {
             </View>
 
             {/* Category Tabs */}
-            <View style={styles.tabsContainer}>
+            <View style={[styles.tabsContainer, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
                 {tabs.map((tab, index) => {
                     const isActive = activeTab === index;
                     const icon = index === 0 ? Bell : index === 1 ? FolderKanban : index === 2 ? MessageSquare : Building2;
@@ -334,11 +336,11 @@ export default function NotificationsScreen() {
                     return (
                         <TouchableOpacity
                             key={tab}
-                            style={[styles.tab, isActive && styles.activeTab]}
+                            style={[styles.tab, { backgroundColor: colors.surface, borderColor: colors.border }, isActive && { backgroundColor: colors.primary + '15', borderColor: colors.primary }]}
                             onPress={() => handleTabPress(index)}
                         >
-                            <Icon size={14} color={isActive ? '#F97316' : '#94A3B8'} />
-                            <Text style={[styles.tabText, isActive && styles.activeTabText]}>
+                            <Icon size={14} color={isActive ? colors.primary : colors.textTertiary} />
+                            <Text style={[styles.tabText, { color: colors.textTertiary }, isActive && { color: colors.primary }]}>
                                 {tab}
                             </Text>
                         </TouchableOpacity>
@@ -354,7 +356,7 @@ export default function NotificationsScreen() {
         if (isProjectLoading && projectActivities.length === 0) {
             return (
                 <View style={styles.loadingContainer}>
-                    <ActivityIndicator size="large" color="#F97316" />
+                    <ActivityIndicator size="large" color={colors.primary} />
                 </View>
             );
         }
@@ -384,9 +386,9 @@ export default function NotificationsScreen() {
                 onRefresh={loadProjectActivity}
                 ListEmptyComponent={
                     <View style={styles.emptyState}>
-                        <FolderKanban size={48} color="#CBD5E1" />
-                        <Text style={styles.emptyStateText}>No project activity</Text>
-                        <Text style={styles.emptyStateSubtext}>
+                        <FolderKanban size={48} color={colors.textTertiary} />
+                        <Text style={[styles.emptyStateText, { color: colors.text }]}>No project activity</Text>
+                        <Text style={[styles.emptyStateSubtext, { color: colors.textTertiary }]}>
                             Recent updates to projects and tasks will appear here.
                         </Text>
                     </View>
@@ -402,7 +404,7 @@ export default function NotificationsScreen() {
         if (loading) {
             return (
                 <View style={styles.loadingContainer}>
-                    <ActivityIndicator size="large" color="#F97316" />
+                    <ActivityIndicator size="large" color={colors.primary} />
                 </View>
             );
         }
@@ -446,31 +448,31 @@ export default function NotificationsScreen() {
                 ListFooterComponent={
                     <View style={{ padding: 16, paddingBottom: 32 }}>
                         {isLoadingMore ? (
-                            <ActivityIndicator color="#F97316" />
+                            <ActivityIndicator color={colors.primary} />
                         ) : hasMore ? (
                             <TouchableOpacity
                                 style={{
                                     padding: 12,
-                                    backgroundColor: '#FFF7ED',
+                                    backgroundColor: colors.primary + '15',
                                     borderRadius: 8,
                                     alignItems: 'center',
                                     borderWidth: 1,
-                                    borderColor: '#FED7AA'
+                                    borderColor: colors.primary + '30'
                                 }}
                                 onPress={loadOlderNotifications}
                             >
-                                <Text style={{ color: '#F97316', fontWeight: '600' }}>Load Older Notifications</Text>
+                                <Text style={{ color: colors.primary, fontWeight: '600' }}>Load Older Notifications</Text>
                             </TouchableOpacity>
                         ) : (
-                            <Text style={{ textAlign: 'center', color: '#94A3B8', fontSize: 13 }}>No more older notifications</Text>
+                            <Text style={{ textAlign: 'center', color: colors.textTertiary, fontSize: 13 }}>No more older notifications</Text>
                         )}
                     </View>
                 }
                 ListEmptyComponent={
                     <View style={styles.emptyState}>
-                        <Bell size={48} color="#CBD5E1" />
-                        <Text style={styles.emptyStateText}>No notifications</Text>
-                        <Text style={styles.emptyStateSubtext}>
+                        <Bell size={48} color={colors.textTertiary} />
+                        <Text style={[styles.emptyStateText, { color: colors.text }]}>No notifications</Text>
+                        <Text style={[styles.emptyStateSubtext, { color: colors.textTertiary }]}>
                             You&apos;re all caught up! 🎉
                         </Text>
                     </View>
@@ -487,7 +489,6 @@ export default function NotificationsScreen() {
                 data={data}
                 keyExtractor={(n) => n.id}
                 renderItem={({ item, index }) => {
-                    // Date grouping
                     const prevDate = index > 0 ? format(new Date(data[index - 1].created_at), 'yyyy-MM-dd') : '';
                     const curDate = format(new Date(item.created_at), 'yyyy-MM-dd');
                     const showDate = curDate !== prevDate;
@@ -505,31 +506,31 @@ export default function NotificationsScreen() {
                 ListFooterComponent={
                     <View style={{ padding: 16, paddingBottom: 32 }}>
                         {isLoadingMore ? (
-                            <ActivityIndicator color="#F97316" />
+                            <ActivityIndicator color={colors.primary} />
                         ) : hasMore ? (
                             <TouchableOpacity
                                 style={{
                                     padding: 12,
-                                    backgroundColor: '#FFF7ED',
+                                    backgroundColor: colors.primary + '15',
                                     borderRadius: 8,
                                     alignItems: 'center',
                                     borderWidth: 1,
-                                    borderColor: '#FED7AA'
+                                    borderColor: colors.primary + '30'
                                 }}
                                 onPress={loadOlderNotifications}
                             >
-                                <Text style={{ color: '#F97316', fontWeight: '600' }}>Load Older Notifications</Text>
+                                <Text style={{ color: colors.primary, fontWeight: '600' }}>Load Older Notifications</Text>
                             </TouchableOpacity>
                         ) : (
-                            <Text style={{ textAlign: 'center', color: '#94A3B8', fontSize: 13 }}>No more older notifications</Text>
+                            <Text style={{ textAlign: 'center', color: colors.textTertiary, fontSize: 13 }}>No more older notifications</Text>
                         )}
                     </View>
                 }
                 ListEmptyComponent={
                     <View style={styles.emptyState}>
-                        <Bell size={48} color="#CBD5E1" />
-                        <Text style={styles.emptyStateText}>No notifications</Text>
-                        <Text style={styles.emptyStateSubtext}>
+                        <Bell size={48} color={colors.textTertiary} />
+                        <Text style={[styles.emptyStateText, { color: colors.text }]}>No notifications</Text>
+                        <Text style={[styles.emptyStateSubtext, { color: colors.textTertiary }]}>
                             You&apos;re all caught up! 🎉
                         </Text>
                     </View>
@@ -548,13 +549,13 @@ export default function NotificationsScreen() {
     };
 
     return (
-        <View style={[styles.container, { paddingTop: insets.top }]}>
-            <StatusBar barStyle="dark-content" />
+        <View style={[styles.container, { paddingTop: insets.top, backgroundColor: colors.background }]}>
+            <StatusBar barStyle={colorScheme === 'dark' ? 'light-content' : 'dark-content'} />
             {renderHeader()}
 
             {isLoading && notifications.length === 0 && activeTab !== 1 ? (
                 <View style={styles.loadingContainer}>
-                    <ActivityIndicator size="large" color="#F97316" />
+                    <ActivityIndicator size="large" color={colors.primary} />
                 </View>
             ) : (
                 renderActiveTab()

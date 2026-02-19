@@ -9,6 +9,7 @@ import {
   Platform,
 } from 'react-native';
 import { Check } from 'lucide-react-native';
+import { useTheme } from '@/contexts/ThemeContext';
 
 interface PickerOption {
   value: string;
@@ -27,32 +28,33 @@ interface PickerModalProps {
 }
 
 export function PickerModal({ visible, onClose, title, options, selectedValue, onSelect }: PickerModalProps) {
+  const { colors } = useTheme();
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={onClose}>
-        <TouchableOpacity style={styles.sheet} activeOpacity={1} onPress={() => {}}>
-          <View style={styles.handle} />
-          <Text style={styles.title}>{title}</Text>
+        <TouchableOpacity style={[styles.sheet, { backgroundColor: colors.card }]} activeOpacity={1} onPress={() => {}}>
+          <View style={[styles.handle, { backgroundColor: colors.border }]} />
+          <Text style={[styles.title, { color: colors.text }]}>{title}</Text>
           <ScrollView style={{ maxHeight: 400 }} showsVerticalScrollIndicator={false}>
             {options.map(opt => (
               <TouchableOpacity
                 key={opt.value}
-                style={[styles.option, selectedValue === opt.value && styles.optionActive]}
+                style={[styles.option, selectedValue === opt.value && { backgroundColor: colors.primary + '10' }]}
                 onPress={() => { onSelect(opt.value); onClose(); }}
               >
                 {opt.color && <View style={[styles.dot, { backgroundColor: opt.color }]} />}
                 <View style={{ flex: 1 }}>
-                  <Text style={[styles.optionText, selectedValue === opt.value && styles.optionTextActive]}>
+                  <Text style={[styles.optionText, { color: colors.text }, selectedValue === opt.value && { color: colors.primary, fontWeight: '600' }]}>
                     {opt.label}
                   </Text>
-                  {opt.subtitle && <Text style={styles.optionSub}>{opt.subtitle}</Text>}
+                  {opt.subtitle && <Text style={[styles.optionSub, { color: colors.textTertiary }]}>{opt.subtitle}</Text>}
                 </View>
-                {selectedValue === opt.value && <Check size={18} color="#F97316" />}
+                {selectedValue === opt.value && <Check size={18} color={colors.primary} />}
               </TouchableOpacity>
             ))}
           </ScrollView>
-          <TouchableOpacity style={styles.cancelBtn} onPress={onClose}>
-            <Text style={styles.cancelText}>Cancel</Text>
+          <TouchableOpacity style={[styles.cancelBtn, { backgroundColor: colors.surface }]} onPress={onClose}>
+            <Text style={[styles.cancelText, { color: colors.textSecondary }]}>Cancel</Text>
           </TouchableOpacity>
         </TouchableOpacity>
       </TouchableOpacity>

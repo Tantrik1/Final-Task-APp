@@ -18,6 +18,16 @@ import {
     UIManager,
     KeyboardAvoidingView,
 } from 'react-native';
+
+const useKeyboardVisible = () => {
+    const [visible, setVisible] = useState(false);
+    useEffect(() => {
+        const showSub = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow', () => setVisible(true));
+        const hideSub = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide', () => setVisible(false));
+        return () => { showSub.remove(); hideSub.remove(); };
+    }, []);
+    return visible;
+};
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -42,7 +52,8 @@ import { format, isToday, isYesterday, isSameDay } from 'date-fns';
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
 import EmojiPicker from 'rn-emoji-keyboard';
-import { useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useTheme } from '@/contexts/ThemeContext';
 
 import { useChat, Channel } from '@/hooks/useChat';
 import { useChatMessages, Message } from '@/hooks/useChatMessages';
@@ -81,8 +92,12 @@ const useResponsive = () => {
 
 export default function ChatScreen() {
     const insets = useSafeAreaInsets();
-    const { currentWorkspace } = useWorkspace();
+    const keyboardVisible = useKeyboardVisible();
+    const { id: channelId } = useLocalSearchParams();
+    const router = useRouter();
     const { user } = useAuth();
+    const { currentWorkspace } = useWorkspace();
+    const { colors } = useTheme();
     const params = useLocalSearchParams();
     const responsive = useResponsive();
 
@@ -285,18 +300,53 @@ export default function ChatScreen() {
         return (
             <View>
                 {showDate && (
-                    <View style={s.dateDivider}>
-                        <View style={s.dateLine} />
-                        <Text style={s.dateText}>{
+                    <View style={[
+                        s.dateDivider, 
+                        { 
+                            marginVertical: 16,
+                            paddingHorizontal: 16
+                        }
+                    ]}>
+                        <View style={[
+                            s.dateLine, 
+                            { 
+                                backgroundColor: colors.borderLight,
+                                height: 1,
+                                flex: 1
+                            }
+                        ]} />
+                        <Text style={[
+                            s.dateText, 
+                            { 
+                                color: colors.textTertiary,
+                                fontSize: 12,
+                                fontWeight: '600',
+                                paddingHorizontal: 12,
+                                backgroundColor: colors.surface,
+                                borderRadius: 12,
+                                overflow: 'hidden'
+                            }
+                        ]}>{
                             isToday(new Date(item.created_at)) ? 'Today' :
                                 isYesterday(new Date(item.created_at)) ? 'Yesterday' :
                                     format(new Date(item.created_at), 'EEE, MMM d')
                         }</Text>
-                        <View style={s.dateLine} />
+                        <View style={[
+                            s.dateLine, 
+                            { 
+                                backgroundColor: colors.borderLight,
+                                height: 1,
+                                flex: 1
+                            }
+                        ]} />
                     </View>
                 )}
                 <TouchableOpacity
-                    style={[s.msgRow, isOwn && s.msgRowOwn, groupedTop && { marginTop: 2 }]}
+                    style={[
+                        s.msgRow, 
+                        isOwn && s.msgRowOwn, 
+                        groupedTop && { marginTop: 2 }
+                    ]}
                     onLongPress={() => handleLongPress(item)}
                     activeOpacity={0.9}
                 >
@@ -306,8 +356,24 @@ export default function ChatScreen() {
                                 item.sender?.avatar_url ? (
                                     <Image source={{ uri: item.sender.avatar_url }} style={s.avatarImage} />
                                 ) : (
-                                    <View style={[s.avatar, { backgroundColor: '#F1F5F9' }]}>
-                                        <Text style={{ fontSize: 12, fontWeight: '700', color: '#64748B' }}>
+                                    <View style={[
+                                        s.avatar, 
+                                        { 
+                                            backgroundColor: colors.surfaceElevated,
+                                            borderColor: colors.border,
+                                            borderWidth: 1,
+                                            shadowColor: colors.shadow,
+                                            shadowOffset: { width: 0, height: 1 },
+                                            shadowOpacity: 0.1,
+                                            shadowRadius: 2,
+                                            elevation: 1,
+                                        }
+                                    ]}>
+                                        <Text style={{ 
+                                            fontSize: 12, 
+                                            fontWeight: '700', 
+                                            color: colors.textSecondary 
+                                        }}>
                                             {senderName.charAt(0).toUpperCase()}
                                         </Text>
                                     </View>
@@ -318,7 +384,7 @@ export default function ChatScreen() {
 
                     <View style={{ maxWidth: '82%' }}>
                         {!isOwn && !groupedTop && (
-                            <Text style={s.senderName}>{senderName}</Text>
+                            <Text style={[s.senderName, { color: colors.textTertiary }]}>{senderName}</Text>
                         )}
 
                         {/* Message Bubble */}
@@ -341,6 +407,7 @@ export default function ChatScreen() {
                             <View style={[
                                 s.bubble,
                                 s.bubbleOther,
+                                { backgroundColor: colors.card, borderColor: colors.border },
                                 groupedTop && s.bubbleGroupTopOther,
                                 groupedBottom && s.bubbleGroupBottomOther,
                                 item.reply_to && { borderTopRightRadius: 16 }
@@ -363,19 +430,19 @@ export default function ChatScreen() {
                         <Text style={[s.replyName, isOwn ? { color: 'rgba(255,255,255,0.9)' } : { color: '#3B82F6' }]}>
                             {item.reply_to.sender?.full_name || 'User'}
                         </Text>
-                        <Text style={[s.replyContent, isOwn ? { color: 'rgba(255,255,255,0.8)' } : { color: '#64748B' }]} numberOfLines={1}>
+                        <Text style={[s.replyContent, isOwn ? { color: 'rgba(255,255,255,0.8)' } : { color: colors.textTertiary }]} numberOfLines={1}>
                             {item.reply_to.content}
                         </Text>
                     </View>
                 </View>
             )}
-            <Text style={[s.msgText, isOwn && s.msgTextOwn]}>{item.content}</Text>
+            <Text style={[s.msgText, { color: colors.text }, isOwn && s.msgTextOwn]}>{item.content}</Text>
             <View style={s.msgMeta}>
-                <Text style={[s.msgTime, isOwn && { color: 'rgba(255,255,255,0.7)' }]}>
+                <Text style={[s.msgTime, { color: colors.textTertiary }, isOwn && { color: 'rgba(255,255,255,0.7)' }]}>
                     {format(new Date(item.created_at), 'h:mm a')}
                 </Text>
                 {item.is_edited && (
-                    <Text style={[s.editedTag, isOwn && { color: 'rgba(255,255,255,0.6)' }]}>edited</Text>
+                    <Text style={[s.editedTag, { color: colors.textTertiary }, isOwn && { color: 'rgba(255,255,255,0.6)' }]}>edited</Text>
                 )}
             </View>
         </>
@@ -386,37 +453,112 @@ export default function ChatScreen() {
         : (activeConversation?.other_user?.full_name || activeConversation?.other_user?.email?.split('@')[0] || 'Chat');
 
     return (
-        <View style={s.container}>
+        <View style={[s.container, { backgroundColor: colors.background }]}>
             <StatusBar style="dark" />
 
             {/* Header - Modern Fun Look */}
-            <View style={[s.header, { paddingTop: Math.max(insets.top, 10) + 4 }]}>
-                <TouchableOpacity onPress={() => setShowChannelList(true)} style={s.headerTitleBtn}>
-                    <View style={s.headerIconContainer}>
+            <View style={[
+                s.header, 
+                { 
+                    backgroundColor: colors.card,
+                    borderBottomColor: colors.border,
+                    shadowColor: colors.shadow,
+                    shadowOffset: { width: 0, height: 2 },
+                    shadowOpacity: 0.1,
+                    shadowRadius: 8,
+                    elevation: 3,
+                    paddingTop: Math.max(insets.top, 10) + 4 
+                }
+            ]}>
+                <TouchableOpacity 
+                    onPress={() => setShowChannelList(true)} 
+                    style={[
+                        s.headerTitleBtn, 
+                        { 
+                            backgroundColor: colors.surface,
+                            borderRadius: 12,
+                            paddingVertical: 8,
+                            paddingHorizontal: 12,
+                            shadowColor: colors.shadowLight,
+                            shadowOffset: { width: 0, height: 1 },
+                            shadowOpacity: 0.05,
+                            shadowRadius: 2,
+                            elevation: 1,
+                        }
+                    ]}
+                >
+                    <View style={[
+                        s.headerIconContainer, 
+                        { 
+                            shadowColor: colors.shadowColored,
+                            shadowOffset: { width: 0, height: 2 },
+                            shadowOpacity: 0.2,
+                            shadowRadius: 4,
+                            elevation: 2,
+                        }
+                    ]}>
                         <LinearGradient
-                            colors={activeTab === 'channels' ? ['#FFF7ED', '#FFEDD5'] : ['#EDE9FE', '#DDD6FE']}
+                            colors={activeTab === 'channels' ? [colors.accent, colors.accentLight] : [colors.primary, colors.primaryLight]}
                             style={[s.headerAvatarPlaceholder]}
                         >
                             {activeTab === 'dms' && activeConversation?.other_user?.avatar_url ? (
                                 <Image source={{ uri: activeConversation.other_user.avatar_url }} style={s.headerAvatar} />
                             ) : (
-                                activeTab === 'channels' ? <Hash size={22} color="#F97316" /> : <User size={22} color="#8B5CF6" />
+                                activeTab === 'channels' ? <Hash size={22} color={colors.buttonText} /> : <User size={22} color={colors.buttonText} />
                             )}
                         </LinearGradient>
                         {activeTab === 'dms' && activeConversation?.other_user && isUserOnline(activeConversation.other_user.id) && (
-                            <View style={s.onlineBadge} />
+                            <View style={[
+                                s.onlineBadge, 
+                                { 
+                                    backgroundColor: colors.success,
+                                    shadowColor: colors.success,
+                                    shadowOffset: { width: 0, height: 1 },
+                                    shadowOpacity: 0.2,
+                                    shadowRadius: 2,
+                                    elevation: 1,
+                                }
+                            ]} />
                         )}
                     </View>
                     <View>
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                            <Text style={s.headerTitle}>{headerTitle}</Text>
-                            <ChevronDown size={16} color="#94A3B8" />
+                            <Text style={[
+                                s.headerTitle, 
+                                { 
+                                    color: colors.text,
+                                    fontSize: 18,
+                                    fontWeight: '700'
+                                }
+                            ]}>{headerTitle}</Text>
+                            <ChevronDown size={16} color={colors.textTertiary} />
                         </View>
-                        <Text style={s.headerSub}>{activeTab === 'channels' ? `${onlineCount} online` : 'Active now'}</Text>
+                        <Text style={[
+                                s.headerSub, 
+                                { 
+                                    color: colors.textSecondary,
+                                    fontSize: 12,
+                                    fontWeight: '500'
+                                }
+                            ]}>{activeTab === 'channels' ? `${onlineCount} online` : 'Active now'}</Text>
                     </View>
                 </TouchableOpacity>
-                <TouchableOpacity style={s.searchBtn}>
-                    <Search size={22} color="#64748B" />
+                <TouchableOpacity 
+                    style={[
+                        s.searchBtn, 
+                        { 
+                            backgroundColor: colors.surface,
+                            borderRadius: 12,
+                            padding: 8,
+                            shadowColor: colors.shadowLight,
+                            shadowOffset: { width: 0, height: 1 },
+                            shadowOpacity: 0.05,
+                            shadowRadius: 2,
+                            elevation: 1,
+                        }
+                    ]}
+                >
+                    <Search size={22} color={colors.textTertiary} />
                 </TouchableOpacity>
             </View>
 
@@ -426,7 +568,7 @@ export default function ChatScreen() {
                 keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0} // Adjust if necessary
             >
                 {/* Message List */}
-                <View style={{ flex: 1, backgroundColor: '#FAFAFA' }}>
+                <View style={{ flex: 1, backgroundColor: colors.background }}>
                     <FlatList
                         ref={flatListRef}
                         data={invertedMessages}
@@ -441,38 +583,38 @@ export default function ChatScreen() {
                 </View>
 
                 {/* Typing & Input Area */}
-                <View style={[s.inputContainer, { paddingBottom: Math.max(insets.bottom, 10) + 100 }]}>
+                <View style={[s.inputContainer, { paddingBottom: keyboardVisible ? 6 : Math.max(insets.bottom, 10) + 90, paddingTop: 10, backgroundColor: 'transparent' }]}>
                     {/* Typing Indicator moved here for visibility */}
                     {typingText && (
-                        <View style={s.typingFloat}>
+                        <View style={[s.typingFloat, { backgroundColor: colors.card + 'E6', shadowColor: colors.shadow }]}>
                             <View style={s.typingDot} /><View style={s.typingDot} /><View style={s.typingDot} />
-                            <Text style={s.typingText}>{typingText}</Text>
+                            <Text style={[s.typingText, { color: colors.textTertiary }]}>{typingText}</Text>
                         </View>
                     )}
 
                     {(replyingTo || editingMessage) && (
-                        <View style={s.replyBarFloat}>
+                        <View style={[s.replyBarFloat, { backgroundColor: colors.card, shadowColor: colors.shadow }]}>
                             <View style={[s.replyBarLine, { backgroundColor: replyingTo ? '#F97316' : '#3B82F6' }]} />
                             <View style={{ flex: 1 }}>
-                                <Text style={s.replyBarTitle}>{replyingTo ? `Replying to ${replyingTo.sender?.full_name || 'User'}` : 'Editing Message'}</Text>
-                                <Text style={s.replyBarText} numberOfLines={1}>{replyingTo?.content || editingMessage?.content}</Text>
+                                <Text style={[s.replyBarTitle, { color: colors.textTertiary }]}>{replyingTo ? `Replying to ${replyingTo.sender?.full_name || 'User'}` : 'Editing Message'}</Text>
+                                <Text style={[s.replyBarText, { color: colors.text }]} numberOfLines={1}>{replyingTo?.content || editingMessage?.content}</Text>
                             </View>
                             <TouchableOpacity onPress={() => { setReplyingTo(null); setEditingMessage(null); setMessageText(''); }}>
-                                <X size={16} color="#94A3B8" />
+                                <X size={16} color={colors.textTertiary} />
                             </TouchableOpacity>
                         </View>
                     )}
 
                     <View style={s.inputWrapper}>
-                        <View style={s.inputField}>
+                        <View style={[s.inputField, { backgroundColor: colors.card, borderColor: colors.border, shadowColor: colors.shadow }]}>
                             <TouchableOpacity onPress={() => { Keyboard.dismiss(); setShowEmojiPicker(true); }} style={s.emojiBtn}>
-                                <Smile size={24} color="#94A3B8" />
+                                <Smile size={24} color={colors.textTertiary} />
                             </TouchableOpacity>
                             <TextInput
                                 ref={inputRef}
-                                style={s.textInput}
+                                style={[s.textInput, { color: colors.text }]}
                                 placeholder="Type a message..."
-                                placeholderTextColor="#94A3B8"
+                                placeholderTextColor={colors.textTertiary}
                                 multiline
                                 value={messageText}
                                 onChangeText={(t) => { setMessageText(t); t.trim() ? startTyping() : stopTyping(); }}
@@ -480,11 +622,11 @@ export default function ChatScreen() {
                         </View>
                         <Animated.View style={{ transform: [{ scale: sendBtnScale }] }}>
                             <TouchableOpacity
-                                style={[s.sendBtn, messageText.trim() && s.sendBtnActive]}
+                                style={[s.sendBtn, { backgroundColor: colors.border }, messageText.trim() && s.sendBtnActive]}
                                 onPress={handleSend}
                                 disabled={!messageText.trim()}
                             >
-                                <Send size={20} color={messageText.trim() ? '#FFF' : '#CBD5E1'} />
+                                <Send size={20} color={messageText.trim() ? '#FFF' : colors.textTertiary} />
                             </TouchableOpacity>
                         </Animated.View>
                     </View>
@@ -500,21 +642,21 @@ export default function ChatScreen() {
             {/* Channel/DM Switcher Modal */}
             <Modal visible={showChannelList} transparent animationType="slide" onRequestClose={() => setShowChannelList(false)}>
                 <TouchableOpacity style={s.modalOverlay} activeOpacity={1} onPress={() => setShowChannelList(false)}>
-                    <View style={s.sheetContainer} onStartShouldSetResponder={() => true}>
-                        <View style={s.sheetHandle} />
+                    <View style={[s.sheetContainer, { backgroundColor: colors.card }]} onStartShouldSetResponder={() => true}>
+                        <View style={[s.sheetHandle, { backgroundColor: colors.border }]} />
                         <View style={s.tabSwitcher}>
-                            <TouchableOpacity onPress={() => setActiveTab('channels')} style={[s.tabBtn, activeTab === 'channels' && s.tabBtnActive]}>
-                                <Text style={[s.tabText, activeTab === 'channels' && s.tabTextActive]}>Channels</Text>
+                            <TouchableOpacity onPress={() => setActiveTab('channels')} style={[s.tabBtn, { backgroundColor: colors.surface }, activeTab === 'channels' && { backgroundColor: colors.primary + '15', borderWidth: 1, borderColor: colors.primary + '30' }]}>
+                                <Text style={[s.tabText, { color: colors.textSecondary }, activeTab === 'channels' && { color: colors.primary }]}>Channels</Text>
                             </TouchableOpacity>
-                            <TouchableOpacity onPress={() => setActiveTab('dms')} style={[s.tabBtn, activeTab === 'dms' && s.tabBtnActive]}>
-                                <Text style={[s.tabText, activeTab === 'dms' && s.tabTextActive]}>Direct Messages</Text>
+                            <TouchableOpacity onPress={() => setActiveTab('dms')} style={[s.tabBtn, { backgroundColor: colors.surface }, activeTab === 'dms' && { backgroundColor: colors.primary + '15', borderWidth: 1, borderColor: colors.primary + '30' }]}>
+                                <Text style={[s.tabText, { color: colors.textSecondary }, activeTab === 'dms' && { color: colors.primary }]}>Direct Messages</Text>
                                 {dmUnreadCount > 0 && <View style={s.badge}><Text style={s.badgeText}>{dmUnreadCount}</Text></View>}
                             </TouchableOpacity>
                         </View>
 
                         <View style={s.sheetHeader}>
-                            <Text style={s.sheetTitle}>{activeTab === 'channels' ? 'All Channels' : 'Conversations'}</Text>
-                            <TouchableOpacity style={s.addBtn} onPress={() => {
+                            <Text style={[s.sheetTitle, { color: colors.text }]}>{activeTab === 'channels' ? 'All Channels' : 'Conversations'}</Text>
+                            <TouchableOpacity style={[s.addBtn, { backgroundColor: colors.primary }]} onPress={() => {
                                 if (activeTab === 'channels') { setShowChannelList(false); setShowCreateChannel(true); }
                                 else { fetchWorkspaceMembers(); setShowStartDM(true); }
                             }}>
@@ -524,29 +666,29 @@ export default function ChatScreen() {
 
                         <ScrollView style={{ paddingHorizontal: 20 }}>
                             {activeTab === 'channels' ? channels.map(ch => (
-                                <TouchableOpacity key={ch.id} style={[s.listItem, activeChannel?.id === ch.id && s.listItemActive]} onPress={() => handleSelectChannel(ch)}>
-                                    <View style={[s.listIcon, activeChannel?.id === ch.id && { backgroundColor: '#F97316' }]}>
-                                        <Hash size={18} color={activeChannel?.id === ch.id ? '#FFF' : '#64748B'} />
+                                <TouchableOpacity key={ch.id} style={[s.listItem, activeChannel?.id === ch.id && { backgroundColor: colors.primary + '10' }]} onPress={() => handleSelectChannel(ch)}>
+                                    <View style={[s.listIcon, { backgroundColor: colors.surface }, activeChannel?.id === ch.id && { backgroundColor: colors.primary }]}>
+                                        <Hash size={18} color={activeChannel?.id === ch.id ? '#FFF' : colors.textSecondary} />
                                     </View>
                                     <View style={{ flex: 1 }}>
-                                        <Text style={[s.listTitle, activeChannel?.id === ch.id && { color: '#F97316' }]}>{ch.name}</Text>
-                                        <Text style={s.listSub} numberOfLines={1}>{ch.description || 'Public Channel'}</Text>
+                                        <Text style={[s.listTitle, { color: colors.text }, activeChannel?.id === ch.id && { color: colors.primary }]}>{ch.name}</Text>
+                                        <Text style={[s.listSub, { color: colors.textTertiary }]} numberOfLines={1}>{ch.description || 'Public Channel'}</Text>
                                     </View>
                                     {(ch.unread_count || 0) > 0 && <View style={s.badge}><Text style={s.badgeText}>{ch.unread_count}</Text></View>}
                                 </TouchableOpacity>
                             )) : conversations.map(c => (
-                                <TouchableOpacity key={c.id} style={[s.listItem, activeConversation?.id === c.id && s.listItemActive]} onPress={() => handleSelectDM(c)}>
-                                    <View style={s.listAvatar}>
+                                <TouchableOpacity key={c.id} style={[s.listItem, activeConversation?.id === c.id && { backgroundColor: colors.primary + '10' }]} onPress={() => handleSelectDM(c)}>
+                                    <View style={[s.listAvatar, { backgroundColor: colors.surface }]}>
                                         {c.other_user?.avatar_url ? (
                                             <Image source={{ uri: c.other_user.avatar_url }} style={s.listImg} />
                                         ) : (
-                                            <Text style={s.listInitials}>{c.other_user?.full_name?.charAt(0) || 'U'}</Text>
+                                            <Text style={[s.listInitials, { color: colors.textSecondary }]}>{c.other_user?.full_name?.charAt(0) || 'U'}</Text>
                                         )}
-                                        {c.other_user && isUserOnline(c.other_user.id) && <View style={s.listOnline} />}
+                                        {c.other_user && isUserOnline(c.other_user.id) && <View style={[s.listOnline, { borderColor: colors.card }]} />}
                                     </View>
                                     <View style={{ flex: 1 }}>
-                                        <Text style={[s.listTitle, activeConversation?.id === c.id && { color: '#8B5CF6' }]}>{c.other_user?.full_name || 'User'}</Text>
-                                        <Text style={s.listSub} numberOfLines={1}>{c.last_message?.content || 'No messages'}</Text>
+                                        <Text style={[s.listTitle, { color: colors.text }, activeConversation?.id === c.id && { color: '#8B5CF6' }]}>{c.other_user?.full_name || 'User'}</Text>
+                                        <Text style={[s.listSub, { color: colors.textTertiary }]} numberOfLines={1}>{c.last_message?.content || 'No messages'}</Text>
                                     </View>
                                     {(c.unread_count || 0) > 0 && <View style={[s.badge, { backgroundColor: '#8B5CF6' }]}><Text style={s.badgeText}>{c.unread_count}</Text></View>}
                                 </TouchableOpacity>
@@ -559,24 +701,24 @@ export default function ChatScreen() {
             {/* Custom Action Sheet */}
             <Modal visible={!!selectedMessage} transparent animationType="fade" onRequestClose={() => setSelectedMessage(null)}>
                 <TouchableOpacity style={s.modalOverlay} activeOpacity={1} onPress={() => setSelectedMessage(null)}>
-                    <View style={s.actionSheet}>
+                    <View style={[s.actionSheet, { backgroundColor: colors.card }]}>
                         <TouchableOpacity style={s.actionRow} onPress={() => selectedMessage && handleReply(selectedMessage)}>
                             <Reply size={20} color="#3B82F6" />
-                            <Text style={s.actionText}>Reply</Text>
+                            <Text style={[s.actionText, { color: colors.text }]}>Reply</Text>
                         </TouchableOpacity>
-                        <View style={s.div} />
+                        <View style={[s.div, { backgroundColor: colors.border }]} />
                         <TouchableOpacity style={s.actionRow} onPress={() => selectedMessage && handleCopy(selectedMessage)}>
-                            <Copy size={20} color="#64748B" />
-                            <Text style={s.actionText}>Copy Text</Text>
+                            <Copy size={20} color={colors.textSecondary} />
+                            <Text style={[s.actionText, { color: colors.text }]}>Copy Text</Text>
                         </TouchableOpacity>
                         {selectedMessage?.sender_id === user?.id && (
                             <>
-                                <View style={s.div} />
+                                <View style={[s.div, { backgroundColor: colors.border }]} />
                                 <TouchableOpacity style={s.actionRow} onPress={() => selectedMessage && handleEdit(selectedMessage)}>
                                     <Edit3 size={20} color="#F97316" />
-                                    <Text style={s.actionText}>Edit Message</Text>
+                                    <Text style={[s.actionText, { color: colors.text }]}>Edit Message</Text>
                                 </TouchableOpacity>
-                                <View style={s.div} />
+                                <View style={[s.div, { backgroundColor: colors.border }]} />
                                 <TouchableOpacity style={s.actionRow} onPress={() => selectedMessage && handleDeleteMessage(selectedMessage)}>
                                     <Trash2 size={20} color="#EF4444" />
                                     <Text style={[s.actionText, { color: '#EF4444' }]}>Delete</Text>
@@ -590,31 +732,31 @@ export default function ChatScreen() {
             {/* Modals for Create Channel & Start DM */}
             <Modal visible={showCreateChannel} transparent animationType="fade" onRequestClose={() => setShowCreateChannel(false)}>
                 <View style={s.centerOverlay}>
-                    <View style={s.dialogBox}>
-                        <Text style={s.dialogTitle}>New Channel</Text>
-                        <TextInput style={s.dialogInput} placeholder="Channel Name" value={newChannelName} onChangeText={setNewChannelName} autoFocus />
+                    <View style={[s.dialogBox, { backgroundColor: colors.card }]}>
+                        <Text style={[s.dialogTitle, { color: colors.text }]}>New Channel</Text>
+                        <TextInput style={[s.dialogInput, { backgroundColor: colors.surface, color: colors.text, borderColor: colors.border }]} placeholder="Channel Name" placeholderTextColor={colors.textTertiary} value={newChannelName} onChangeText={setNewChannelName} autoFocus />
                         <View style={s.dialogButtons}>
-                            <TouchableOpacity onPress={() => setShowCreateChannel(false)} style={s.dialogBtn}><Text style={s.dialogBtnText}>Cancel</Text></TouchableOpacity>
-                            <TouchableOpacity onPress={handleCreateChannel} style={[s.dialogBtn, s.dialogBtnPrimary]}><Text style={[s.dialogBtnText, { color: '#FFF' }]}>Create</Text></TouchableOpacity>
+                            <TouchableOpacity onPress={() => setShowCreateChannel(false)} style={[s.dialogBtn, { backgroundColor: colors.surface }]}><Text style={[s.dialogBtnText, { color: colors.textSecondary }]}>Cancel</Text></TouchableOpacity>
+                            <TouchableOpacity onPress={handleCreateChannel} style={[s.dialogBtn, { backgroundColor: colors.primary }]}><Text style={[s.dialogBtnText, { color: '#FFF' }]}>Create</Text></TouchableOpacity>
                         </View>
                     </View>
                 </View>
             </Modal>
             <Modal visible={showStartDM} transparent animationType="fade" onRequestClose={() => setShowStartDM(false)}>
                 <View style={s.centerOverlay}>
-                    <View style={[s.dialogBox, { maxHeight: 400 }]}>
-                        <Text style={s.dialogTitle}>New Message</Text>
-                        {membersLoading ? <ActivityIndicator color="#F97316" /> : (
+                    <View style={[s.dialogBox, { maxHeight: 400, backgroundColor: colors.card }]}>
+                        <Text style={[s.dialogTitle, { color: colors.text }]}>New Message</Text>
+                        {membersLoading ? <ActivityIndicator color={colors.primary} /> : (
                             <ScrollView>
                                 {workspaceMembers.map(m => (
-                                    <TouchableOpacity key={m.user_id} style={s.memberItem} onPress={() => handleStartDM(m.user_id)}>
+                                    <TouchableOpacity key={m.user_id} style={[s.memberItem, { borderBottomColor: colors.border }]} onPress={() => handleStartDM(m.user_id)}>
                                         <View style={s.memberAvatar}><Text style={{ fontWeight: '700', color: '#FFF' }}>{m.full_name?.charAt(0)}</Text></View>
-                                        <Text style={s.memberName}>{m.full_name || m.email}</Text>
+                                        <Text style={[s.memberName, { color: colors.text }]}>{m.full_name || m.email}</Text>
                                     </TouchableOpacity>
                                 ))}
                             </ScrollView>
                         )}
-                        <TouchableOpacity onPress={() => setShowStartDM(false)} style={[s.dialogBtn, { marginTop: 16, width: '100%' }]}><Text style={s.dialogBtnText}>Cancel</Text></TouchableOpacity>
+                        <TouchableOpacity onPress={() => setShowStartDM(false)} style={[s.dialogBtn, { marginTop: 16, width: '100%', backgroundColor: colors.surface }]}><Text style={[s.dialogBtnText, { color: colors.textSecondary }]}>Cancel</Text></TouchableOpacity>
                     </View>
                 </View>
             </Modal>
@@ -705,6 +847,40 @@ const s = StyleSheet.create({
     listSub: { fontSize: 13, color: '#94A3B8' },
     badge: { backgroundColor: '#F97316', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12 },
     badgeText: { fontSize: 11, fontWeight: '800', color: '#FFF' },
+
+    // List Item Styles (Missing)
+    listAvatar: {
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        backgroundColor: '#F1F5F9',
+        alignItems: 'center',
+        justifyContent: 'center',
+        position: 'relative',
+    },
+    listImg: {
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        resizeMode: 'cover',
+    },
+    listInitials: {
+        fontSize: 16,
+        fontWeight: '700',
+        color: '#64748B',
+        textTransform: 'uppercase',
+    },
+    listOnline: {
+        position: 'absolute',
+        bottom: -1,
+        right: -1,
+        width: 12,
+        height: 12,
+        borderRadius: 6,
+        backgroundColor: '#22C55E',
+        borderWidth: 2,
+        borderColor: '#FFF',
+    },
 
     // Action Sheet
     actionSheet: { backgroundColor: '#FFF', borderRadius: 24, margin: 20, padding: 8, marginBottom: 40 },

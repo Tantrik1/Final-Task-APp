@@ -1,6 +1,6 @@
 import React from 'react';
-import { View, Text, StyleSheet, ScrollView, Platform } from 'react-native';
-import { Clock, Calendar, TrendingUp, CheckCircle2 } from 'lucide-react-native';
+import { View, Text, StyleSheet } from 'react-native';
+import { useTheme } from '@/contexts/ThemeContext';
 
 interface MyTasksHeaderProps {
     stats: {
@@ -11,154 +11,101 @@ interface MyTasksHeaderProps {
     };
 }
 
+const STAT_CARDS = [
+    { key: 'overdue',   label: 'Overdue',  accentLight: '#EF4444', accentDark: '#F87171', bgLight: '#FEF2F2', bgDark: '#1C1111' },
+    { key: 'today',     label: 'Today',    accentLight: '#F59E0B', accentDark: '#FBBF24', bgLight: '#FFFBEB', bgDark: '#1C1708' },
+    { key: 'active',    label: 'Active',   accentLight: '#3B82F6', accentDark: '#60A5FA', bgLight: '#EFF6FF', bgDark: '#0C1524' },
+    { key: 'completed', label: 'Done 7d',  accentLight: '#22C55E', accentDark: '#4ADE80', bgLight: '#F0FDF4', bgDark: '#0C1A12' },
+] as const;
+
 export function MyTasksHeader({ stats }: MyTasksHeaderProps) {
+    const { colors, colorScheme } = useTheme();
+    const isDark = colorScheme === 'dark';
+
+    const values: Record<string, number> = {
+        overdue: stats.overdue,
+        today: stats.today,
+        active: stats.active,
+        completed: stats.completed,
+    };
+
     return (
-        <View style={styles.container}>
-            <View style={styles.headerRow}>
-                <View>
-                    <Text style={styles.greeting}>My Tasks</Text>
-                    <Text style={styles.subGreeting}>
-                        {stats.today > 0
-                            ? `You've got ${stats.today} tasks to crush today 💪`
-                            : "All caught up for today! 🎉"}
-                    </Text>
-                </View>
+        <View style={[st.container, { backgroundColor: colors.background }]}>
+            {/* Title */}
+            <View style={st.titleRow}>
+                <Text style={[st.title, { color: colors.text }]}>My Tasks</Text>
+                <Text style={[st.subtitle, { color: colors.textSecondary }]}>
+                    {stats.overdue > 0
+                        ? `${stats.overdue} task${stats.overdue > 1 ? 's' : ''} need attention`
+                        : stats.today > 0
+                        ? `${stats.today} due today`
+                        : 'All caught up!'}
+                </Text>
             </View>
 
-            <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.summaryRow}
-            >
-                {/* Overdue */}
-                <View style={[styles.summaryCard, stats.overdue > 0 ? styles.cardOverdue : styles.cardGood]}>
-                    <View style={styles.iconBox}>
-                        <Clock size={16} color={stats.overdue > 0 ? '#EF4444' : '#10B981'} />
-                    </View>
-                    <View>
-                        <Text style={[styles.count, stats.overdue > 0 && { color: '#EF4444' }]}>{stats.overdue}</Text>
-                        <Text style={styles.label}>Overdue</Text>
-                    </View>
-                </View>
-
-                {/* Due Today */}
-                <View style={[styles.summaryCard, styles.cardToday]}>
-                    <View style={styles.iconBox}>
-                        <Calendar size={16} color="#F59E0B" />
-                    </View>
-                    <View>
-                        <Text style={[styles.count, { color: '#F59E0B' }]}>{stats.today}</Text>
-                        <Text style={styles.label}>Due Today</Text>
-                    </View>
-                </View>
-
-                {/* Active */}
-                <View style={[styles.summaryCard, styles.cardActive]}>
-                    <View style={styles.iconBox}>
-                        <TrendingUp size={16} color="#3B82F6" />
-                    </View>
-                    <View>
-                        <Text style={[styles.count, { color: '#3B82F6' }]}>{stats.active}</Text>
-                        <Text style={styles.label}>Active</Text>
-                    </View>
-                </View>
-
-                {/* Completed */}
-                <View style={[styles.summaryCard, styles.cardCompleted]}>
-                    <View style={styles.iconBox}>
-                        <CheckCircle2 size={16} color="#8B5CF6" />
-                    </View>
-                    <View>
-                        <Text style={[styles.count, { color: '#8B5CF6' }]}>{stats.completed}</Text>
-                        <Text style={styles.label}>Completed</Text>
-                    </View>
-                </View>
-            </ScrollView>
+            {/* 4 stat cards in 1 row */}
+            <View style={st.statsRow}>
+                {STAT_CARDS.map((card) => {
+                    const accent = isDark ? card.accentDark : card.accentLight;
+                    const bg = isDark ? card.bgDark : card.bgLight;
+                    return (
+                        <View key={card.key} style={[st.stat, { backgroundColor: bg }]}>
+                            <Text style={[st.statNum, { color: accent }]}>
+                                {values[card.key]}
+                            </Text>
+                            <Text style={[st.statLabel, { color: isDark ? 'rgba(255,255,255,0.55)' : '#64748B' }]} numberOfLines={1}>
+                                {card.label}
+                            </Text>
+                        </View>
+                    );
+                })}
+            </View>
         </View>
     );
 }
 
-const styles = StyleSheet.create({
+const st = StyleSheet.create({
     container: {
-        paddingVertical: 16,
-        backgroundColor: '#F8FAFC',
+        paddingTop: 14,
+        paddingBottom: 6,
     },
-    headerRow: {
+    titleRow: {
         paddingHorizontal: 20,
-        marginBottom: 16,
+        marginBottom: 14,
     },
-    greeting: {
-        fontSize: 28,
+    title: {
+        fontSize: 26,
         fontWeight: '800',
-        color: '#0F172A',
+        letterSpacing: -0.5,
     },
-    subGreeting: {
-        fontSize: 14,
-        color: '#64748B',
-        marginTop: 4,
+    subtitle: {
+        fontSize: 13,
+        fontWeight: '500',
+        marginTop: 2,
     },
-    summaryRow: {
-        paddingHorizontal: 20,
-        gap: 12,
-        paddingBottom: 8, // slight padding for shadow
-    },
-    summaryCard: {
+    statsRow: {
         flexDirection: 'row',
-        alignItems: 'center',
-        gap: 12,
-        paddingVertical: 12,
         paddingHorizontal: 16,
-        borderRadius: 16,
-        minWidth: 140,
-        borderWidth: 1,
-        ...Platform.select({
-            ios: {
-                shadowColor: '#000',
-                shadowOffset: { width: 0, height: 2 },
-                shadowOpacity: 0.03,
-                shadowRadius: 8,
-            },
-            android: {
-                elevation: 2,
-            },
-        }),
+        gap: 8,
+        marginBottom: 8,
     },
-    cardOverdue: {
-        backgroundColor: '#FEF2F2',
-        borderColor: '#FECACA',
-    },
-    cardGood: {
-        backgroundColor: '#F0FDF4',
-        borderColor: '#BBF7D0',
-    },
-    cardToday: {
-        backgroundColor: '#FFFBEB',
-        borderColor: '#FDE68A',
-    },
-    cardActive: {
-        backgroundColor: '#EFF6FF',
-        borderColor: '#BFDBFE',
-    },
-    cardCompleted: {
-        backgroundColor: '#F5F3FF',
-        borderColor: '#DDD6FE',
-    },
-    iconBox: {
-        width: 32,
-        height: 32,
-        borderRadius: 10,
-        backgroundColor: '#FFFFFF',
+    stat: {
+        flex: 1,
         alignItems: 'center',
-        justifyContent: 'center',
+        paddingVertical: 12,
+        borderRadius: 12,
     },
-    count: {
-        fontSize: 20,
-        fontWeight: '800',
-        color: '#0F172A',
+    statNum: {
+        fontSize: 22,
+        fontWeight: '900',
+        lineHeight: 26,
+        letterSpacing: -0.5,
     },
-    label: {
-        fontSize: 12,
-        fontWeight: '600',
-        color: '#64748B',
+    statLabel: {
+        fontSize: 10,
+        fontWeight: '700',
+        marginTop: 2,
+        textTransform: 'uppercase',
+        letterSpacing: 0.3,
     },
 });

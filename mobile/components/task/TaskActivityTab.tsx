@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import { Activity } from 'lucide-react-native';
 import { supabase } from '@/lib/supabase';
+import { useTheme } from '@/contexts/ThemeContext';
 import { ActivityItem, ActivityLog } from '../ActivityItem';
 
 interface TaskActivityTabProps {
@@ -16,6 +17,7 @@ interface TaskActivityTabProps {
 }
 
 export function TaskActivityTab({ taskId }: TaskActivityTabProps) {
+  const { colors } = useTheme();
   const [activities, setActivities] = useState<ActivityLog[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -53,7 +55,7 @@ export function TaskActivityTab({ taskId }: TaskActivityTabProps) {
   if (isLoading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#F97316" />
+        <ActivityIndicator size="large" color={colors.primary} />
       </View>
     );
   }
@@ -61,9 +63,9 @@ export function TaskActivityTab({ taskId }: TaskActivityTabProps) {
   if (activities.length === 0) {
     return (
       <View style={styles.emptyContainer}>
-        <Activity size={36} color="#E2E8F0" />
-        <Text style={styles.emptyTitle}>No activity yet</Text>
-        <Text style={styles.emptySub}>Actions on this task will appear here</Text>
+        <Activity size={36} color={colors.textTertiary} />
+        <Text style={[styles.emptyTitle, { color: colors.textTertiary }]}>No activity yet</Text>
+        <Text style={[styles.emptySub, { color: colors.textTertiary }]}>Actions on this task will appear here</Text>
       </View>
     );
   }
@@ -73,7 +75,7 @@ export function TaskActivityTab({ taskId }: TaskActivityTabProps) {
       style={{ flex: 1 }}
       contentContainerStyle={styles.scrollContent}
       showsVerticalScrollIndicator={false}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#F97316" />}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
     >
       <View style={styles.timeline}>
         {activities.map((activity, index) => (
