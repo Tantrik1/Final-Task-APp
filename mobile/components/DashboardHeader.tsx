@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, Image, Modal, StyleSheet, Platform, StatusBar } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import { View, Text, TouchableOpacity, Image, Modal, StyleSheet, Platform, StatusBar, Switch, Animated } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
     Bell,
@@ -11,7 +11,10 @@ import {
     Plus,
     Check,
     Menu,
-    ArrowLeft
+    ArrowLeft,
+    Moon,
+    Sun,
+    RefreshCw,
 } from 'lucide-react-native';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { useAuth } from '@/hooks/useAuth';
@@ -20,14 +23,38 @@ import { useRouter } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { supabase } from '@/lib/supabase';
 
-export function DashboardHeader({ showBack = false }: { showBack?: boolean }) {
+export function DashboardHeader({ showBack = false, onRefresh }: { showBack?: boolean; onRefresh?: () => void }) {
     const insets = useSafeAreaInsets();
     const router = useRouter();
     const { currentWorkspace, workspaces, setCurrentWorkspaceId } = useWorkspace();
     const { signOut, user } = useAuth();
     const { unreadCount } = useNotifications();
-    const { colors, colorScheme } = useTheme();
+    const { colors, colorScheme, setTheme, theme } = useTheme();
     const isDark = colorScheme === 'dark';
+
+    const handleThemeToggle = () => {
+        setTheme(isDark ? 'light' : 'dark');
+    };
+
+    const spinAnim = useRef(new Animated.Value(0)).current;
+    const isSpinning = useRef(false);
+
+    const handleRefresh = () => {
+        if (isSpinning.current) return;
+        isSpinning.current = true;
+        spinAnim.setValue(0);
+        Animated.timing(spinAnim, {
+            toValue: 1,
+            duration: 600,
+            useNativeDriver: true,
+        }).start(() => { isSpinning.current = false; });
+        onRefresh?.();
+    };
+
+    const spinInterpolate = spinAnim.interpolate({
+        inputRange: [0, 1],
+        outputRange: ['0deg', '360deg'],
+    });
 
     const [showWorkspaceMenu, setShowWorkspaceMenu] = useState(false);
     const [showProfileMenu, setShowProfileMenu] = useState(false);
@@ -123,6 +150,19 @@ export function DashboardHeader({ showBack = false }: { showBack?: boolean }) {
 
                 {/* Right: Actions */}
                 <View style={styles.actionsRow}>
+                    {/* Refresh button */}
+                    {onRefresh && (
+                        <TouchableOpacity
+                            style={[styles.actionBtn, { backgroundColor: isDark ? colors.surface : colors.background, shadowColor: isDark ? '#000' : colors.shadow }]}
+                            onPress={handleRefresh}
+                            activeOpacity={0.8}
+                        >
+                            <Animated.View style={{ transform: [{ rotate: spinInterpolate }] }}>
+                                <RefreshCw size={18} color={colors.textTertiary} />
+                            </Animated.View>
+                        </TouchableOpacity>
+                    )}
+
                     <TouchableOpacity
                         style={[styles.actionBtn, { backgroundColor: isDark ? colors.surface : colors.background, shadowColor: isDark ? '#000' : colors.shadow }]}
                         onPress={() => router.push('/notifications' as any)}
@@ -286,6 +326,27 @@ export function DashboardHeader({ showBack = false }: { showBack?: boolean }) {
                             </View>
                             <ChevronDown size={14} color={colors.textTertiary} style={{ transform: [{ rotate: '-90deg' }] }} />
                         </TouchableOpacity>
+
+                        {/* Dark / Light mode toggle */}
+                        <View style={styles.menuItem}>
+                            <View style={styles.menuItemLeft}>
+                                <View style={[styles.menuIconWrap, { backgroundColor: isDark ? '#1E1B4B' : '#FFFBEB' }]}>
+                                    {isDark
+                                        ? <Moon size={16} color="#818CF8" />
+                                        : <Sun size={16} color="#F59E0B" />}
+                                </View>
+                                <Text style={[styles.menuItemText, { color: colors.text }]}>
+                                    {isDark ? 'Dark Mode' : 'Light Mode'}
+                                </Text>
+                            </View>
+                            <Switch
+                                value={isDark}
+                                onValueChange={handleThemeToggle}
+                                trackColor={{ false: '#E2E8F0', true: '#4338CA' }}
+                                thumbColor={isDark ? '#818CF8' : '#FFFFFF'}
+                                ios_backgroundColor="#E2E8F0"
+                            />
+                        </View>
 
                         <TouchableOpacity
                             style={[styles.menuItem, { marginTop: 2 }]}

@@ -1,4 +1,5 @@
-import { useRef, useCallback, useMemo } from 'react';
+import React, { useRef, useCallback, useMemo } from 'react';
+import { ActiveTimerBanner } from '@/components/ActiveTimerBanner';
 import {
     View,
     Text,

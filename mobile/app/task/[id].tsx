@@ -11,6 +11,8 @@ import {
   ScrollView,
   Keyboard,
   KeyboardAvoidingView,
+  Animated,
+  Pressable,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { TaskDetailSkeleton } from '@/components/ui/Skeleton';
@@ -45,12 +47,12 @@ import { useAuth } from '@/hooks/useAuth';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useTaskTimer } from '@/hooks/useTaskTimer';
+import { useTimerActions } from '@/stores/useTaskStore';
 import { format, addDays, nextMonday, startOfDay } from 'date-fns';
 import { TaskDetailsTab } from '@/components/task/TaskDetailsTab';
 import { TaskSessionsTab } from '@/components/task/TaskSessionsTab';
 import { TaskCommentsTab } from '@/components/task/TaskCommentsTab';
 import { TaskActivityTab } from '@/components/task/TaskActivityTab';
-import { TimerPauseModal } from '@/components/task/TimerPauseModal';
 import { PickerModal } from '@/components/task/PickerModal';
 import { AssigneeSelector, AssigneeSelectorHandle } from '@/components/task/AssigneeSelector';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -83,6 +85,7 @@ export default function TaskDetailScreen() {
   const { user } = useAuth();
   const { currentWorkspace } = useWorkspace();
   const { colors } = useTheme();
+  const { toggleTimer, stopTimer: stopTimerGlobal } = useTimerActions();
 
   const [task, setTask] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -149,16 +152,29 @@ export default function TaskDetailScreen() {
   const currentStatus = useMemo(() => statuses.find(s => s.id === task?.custom_status_id), [statuses, task?.custom_status_id]);
   const isCompleted = currentStatus?.category === 'done' || currentStatus?.category === 'cancelled' || currentStatus?.is_completed || false;
 
-  // Pause dialog state
-  const [showPauseDialog, setShowPauseDialog] = useState(false);
-  const [pausedDuration, setPausedDuration] = useState(0);
+  // Timer pulse animation
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+  const pulseLoop = useRef<Animated.CompositeAnimation | null>(null);
+  useEffect(() => {
+    if (timerPhase === 'running') {
+      pulseLoop.current = Animated.loop(
+        Animated.sequence([
+          Animated.timing(pulseAnim, { toValue: 1.18, duration: 700, useNativeDriver: true }),
+          Animated.timing(pulseAnim, { toValue: 1, duration: 700, useNativeDriver: true }),
+        ])
+      );
+      pulseLoop.current.start();
+    } else {
+      pulseLoop.current?.stop();
+      Animated.timing(pulseAnim, { toValue: 1, duration: 200, useNativeDriver: true }).start();
+    }
+    return () => { pulseLoop.current?.stop(); };
+  }, [timerPhase]);
 
   const handlePauseTimer = async () => {
-    const duration = await pauseTimer();
-    if (duration > 0) {
-      setPausedDuration(duration);
-      setShowPauseDialog(true);
-    }
+    await pauseTimer();
+    fetchTask();
+    // Store handles optimistic updates automatically
   };
 
   // ─── Data Fetching ───
@@ -194,11 +210,12 @@ export default function TaskDetailScreen() {
       const { error } = await supabase.from('tasks').update(update).eq('id', id);
       if (error) throw error;
       console.log(`[TaskDetail] ✓ ${field} synced successfully`);
-      fetchTask();
+      // Refresh both task state and timer hook in parallel for instant UI update
+      await Promise.all([fetchTask(), timerRefresh()]);
     } catch (err: any) {
       console.error(`[TaskDetail] ✗ Error syncing ${field}:`, err);
     }
-  }, [id, fetchTask]);
+  }, [id, fetchTask, timerRefresh]);
 
   const handleTitleChange = (text: string) => {
     setTitle(text);
@@ -212,14 +229,15 @@ export default function TaskDetailScreen() {
     const st = statuses.find(s => s.id === statusId);
     if (!st) return;
 
-    // If marking as completed, also stop timer
+    // If marking as completed/cancelled, stop timer first
     const isDone = st.category === 'done' || st.category === 'cancelled' || st.is_completed;
     if (isDone && isRunning) {
-      await pauseTimer();
+      await stopTimer();
     }
 
-    // Only write custom_status_id — DB trigger handles status, completed_at, first_started_at
-    syncField('custom_status_id', statusId);
+    // Write custom_status_id — DB trigger handles status enum, completed_at, first_started_at
+    // syncField already calls timerRefresh() so timer phase updates instantly
+    await syncField('custom_status_id', statusId);
   };
 
   const handlePriorityChange = (val: string) => {
@@ -518,22 +536,92 @@ export default function TaskDetailScreen() {
             <ArrowLeft size={22} color={colors.text} />
           </TouchableOpacity>
           <View style={styles.headerCenter}>
-            <View style={[
-              styles.headerDot, 
-              { 
-                backgroundColor: projectColor,
-                shadowColor: projectColor,
-                shadowOffset: { width: 0, height: 1 },
-                shadowOpacity: 0.2,
-                shadowRadius: 2,
-                elevation: 1,
-              }
-            ]} />
-            <Text style={[styles.headerTitle, { color: colors.text }]} numberOfLines={1}>{task.title}</Text>
-            <Text style={[styles.headerSubtitle, { color: colors.textSecondary }]}>{projectName}</Text>
+            <Text style={[styles.headerSubtitle, { color: colors.textTertiary }]}>Project</Text>
+            <Text style={[styles.headerTitle, { color: colors.text }]} numberOfLines={1}>{projectName || '—'}</Text>
           </View>
         </View>
         <View style={styles.headerRight}>
+          {/* ─── Advanced Timer Widget ─── */}
+          {!timerLoading && (() => {
+            const cfg = {
+              idle:      { bg: colors.surface,  border: colors.border,  dotColor: colors.textTertiary, textColor: colors.textTertiary, label: 'Start' },
+              running:   { bg: '#052E16',        border: '#16A34A',      dotColor: '#4ADE80',           textColor: '#4ADE80',           label: 'Pause' },
+              paused:    { bg: '#431407',        border: '#EA580C',      dotColor: '#FB923C',           textColor: '#FB923C',           label: 'Resume' },
+              completed: { bg: '#052E16',        border: '#16A34A',      dotColor: '#4ADE80',           textColor: '#4ADE80',           label: 'Done' },
+            }[timerPhase] ?? { bg: colors.surface, border: colors.border, dotColor: colors.textTertiary, textColor: colors.textTertiary, label: 'Start' };
+
+            const timeStr = timerPhase === 'running'
+              ? formatTimeLive(displayTime)
+              : displayTime === 0 ? '0:00' : formatTimeLive(displayTime);
+
+            return (
+              <View style={styles.timerWidget}>
+                {/* Main pill: tap to play/pause/resume */}
+                <Pressable
+                  onPress={async () => {
+                    if (timerPhase === 'running') { 
+                        await stopTimerGlobal(id, user);
+                        handlePauseTimer(); 
+                    }
+                    else if (timerPhase === 'paused') { 
+                        await toggleTimer(id, user);
+                        fetchTask(); 
+                    }
+                    else if (timerPhase !== 'completed') { 
+                        await toggleTimer(id, user);
+                        fetchTask(); 
+                    }
+                  }}
+                  disabled={timerPhase === 'completed'}
+                  style={({ pressed }) => [
+                    styles.timerPill,
+                    { backgroundColor: cfg.bg, borderColor: cfg.border, opacity: pressed ? 0.75 : 1 },
+                  ]}
+                >
+                  {/* Animated pulse dot */}
+                  <Animated.View style={[
+                    styles.timerDot,
+                    { backgroundColor: cfg.dotColor, transform: [{ scale: timerPhase === 'running' ? pulseAnim : 1 }] },
+                  ]} />
+
+                  {/* Time display */}
+                  <Text style={[styles.timerPillTime, { color: cfg.textColor }]}>
+                    {timeStr}
+                  </Text>
+
+                  {/* Action icon */}
+                  {timerPhase === 'running' ? (
+                    <Pause size={11} color={cfg.dotColor} />
+                  ) : timerPhase === 'paused' ? (
+                    <Play size={11} color={cfg.dotColor} />
+                  ) : timerPhase === 'completed' ? (
+                    <CheckCircle2 size={11} color={cfg.dotColor} />
+                  ) : (
+                    <Play size={11} color={cfg.dotColor} />
+                  )}
+                </Pressable>
+
+                {/* Stop button — only when running or paused */}
+                {(timerPhase === 'running' || timerPhase === 'paused') && (
+                  <Pressable
+                    onPress={async () => { 
+                        await stopTimerGlobal(id, user);
+                        await stopTimer(); 
+                        fetchTask(); 
+                    }}
+                    style={({ pressed }) => [
+                      styles.timerStopBtn,
+                      { backgroundColor: pressed ? '#7F1D1D' : '#2D0A0A', borderColor: '#7F1D1D' },
+                    ]}
+                    hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
+                  >
+                    <Square size={9} color="#F87171" fill="#F87171" />
+                  </Pressable>
+                )}
+              </View>
+            );
+          })()}
+
           <TouchableOpacity 
             style={[
               styles.headerBtn, 
@@ -555,124 +643,6 @@ export default function TaskDetailScreen() {
         </View>
       </View>
 
-      {/* ─── Timer Bar ─── */}
-      {!timerLoading && (
-        <View style={[
-          styles.timerBar, 
-          { 
-            backgroundColor: colors.cardElevated,
-            borderBottomColor: colors.borderLight,
-            borderBottomWidth: 1,
-            shadowColor: colors.shadowLight,
-            shadowOffset: { width: 0, height: 1 },
-            shadowOpacity: 0.05,
-            shadowRadius: 4,
-            elevation: 1,
-          }
-        ]}>
-          <View style={styles.timerLeft}>
-            <View style={[
-              styles.timerIcon, 
-              { 
-                backgroundColor: isRunning ? colors.successBg : colors.surface,
-                shadowColor: isRunning ? colors.success : colors.shadow,
-                shadowOffset: { width: 0, height: 1 },
-                shadowOpacity: 0.1,
-                shadowRadius: 2,
-                elevation: 1,
-              }
-            ]}>
-              {isRunning ? <Clock size={18} color={colors.success} /> : isCompleted ? <CheckCircle2 size={18} color={colors.success} /> : <Clock size={18} color={colors.textTertiary} />}
-            </View>
-            <View>
-              <Text style={[
-                styles.timerValue, 
-                { 
-                  color: isRunning ? colors.primary : colors.text,
-                  fontSize: 18,
-                  fontWeight: '700',
-                  fontFamily: isRunning ? (Platform.OS === 'ios' ? 'Courier' : 'monospace') : undefined,
-                }
-              ]}>
-                {isRunning ? formatTimeLive(displayTime) : formatTime(displayTime)}
-              </Text>
-              <Text style={[
-                styles.timerSub, 
-                { 
-                  color: timerPhase === 'running' ? '#22C55E' : timerPhase === 'paused' ? '#F97316' : colors.textTertiary,
-                  fontSize: 12,
-                  fontWeight: '500'
-                }
-              ]}>
-                {timerPhase === 'running' ? '● Recording' : timerPhase === 'paused' ? '⏸ Paused' : timerPhase === 'completed' ? '✓ Completed' : sessions.length > 0 ? `${sessions.length} session${sessions.length > 1 ? 's' : ''}` : 'No time tracked'}
-              </Text>
-            </View>
-          </View>
-          <View style={styles.timerActions}>
-            {timerPhase === 'completed' ? (
-              <View style={styles.completedBadge}>
-                <CheckCircle2 size={14} color="#22C55E" />
-                <Text style={styles.completedBadgeText}>Done</Text>
-              </View>
-            ) : timerPhase === 'running' ? (
-              <>
-                <TouchableOpacity style={[styles.timerBtn, { backgroundColor: '#F97316' }]} onPress={handlePauseTimer}>
-                  <Pause size={14} color="#FFF" />
-                </TouchableOpacity>
-                <TouchableOpacity style={[styles.timerBtn, { backgroundColor: '#EF4444' }]} onPress={async () => { await stopTimer(); }}>
-                  <Square size={12} color="#FFF" />
-                </TouchableOpacity>
-                <TouchableOpacity style={[styles.timerBtn, { backgroundColor: '#22C55E' }]} onPress={completeTask}>
-                  <CheckCircle2 size={14} color="#FFF" />
-                </TouchableOpacity>
-              </>
-            ) : timerPhase === 'paused' ? (
-              <>
-                <TouchableOpacity style={[styles.timerBtn, { backgroundColor: '#3B82F6' }]} onPress={resumeTimer}>
-                  <Play size={14} color="#FFF" />
-                </TouchableOpacity>
-                <TouchableOpacity style={[styles.timerBtn, { backgroundColor: '#22C55E' }]} onPress={completeTask}>
-                  <CheckCircle2 size={14} color="#FFF" />
-                </TouchableOpacity>
-              </>
-            ) : (
-              <TouchableOpacity style={[styles.timerBtn, { backgroundColor: '#3B82F6' }]} onPress={startTimer}>
-                <Play size={14} color="#FFF" />
-                <Text style={styles.timerBtnText}>Start</Text>
-              </TouchableOpacity>
-            )}
-          </View>
-        </View>
-      )}
-
-      {/* ─── Mini Stats ─── */}
-      {!timerLoading && (firstStartedAt || completedAt) && (
-        <View style={[styles.miniStats, { backgroundColor: colors.cardElevated, borderBottomColor: colors.borderLight }]}>
-          {firstStartedAt && (
-            <View style={styles.miniStatItem}>
-              <View style={[styles.miniStatDot, { backgroundColor: '#F97316' }]} />
-              <Text style={[styles.miniStatLabel, { color: colors.textTertiary }]}>Started</Text>
-              <Text style={[styles.miniStatValue, { color: colors.textSecondary }]}>{format(firstStartedAt, 'MMM d')}</Text>
-            </View>
-          )}
-          {completedAt && (
-            <View style={styles.miniStatItem}>
-              <View style={[styles.miniStatDot, { backgroundColor: '#22C55E' }]} />
-              <Text style={[styles.miniStatLabel, { color: colors.textTertiary }]}>Completed</Text>
-              <Text style={[styles.miniStatValue, { color: colors.textSecondary }]}>{format(completedAt, 'MMM d')}</Text>
-            </View>
-          )}
-          {firstStartedAt && (
-            <View style={styles.miniStatItem}>
-              <View style={[styles.miniStatDot, { backgroundColor: '#8B5CF6' }]} />
-              <Text style={[styles.miniStatLabel, { color: colors.textTertiary }]}>Elapsed</Text>
-              <Text style={[styles.miniStatValue, { color: colors.textSecondary }]}>
-                {Math.max(1, Math.ceil(((completedAt || new Date()).getTime() - firstStartedAt.getTime()) / (1000 * 60 * 60 * 24)))}d
-              </Text>
-            </View>
-          )}
-        </View>
-      )}
 
       {/* ─── Title and Bubbles (Visible on all tabs) ─── */}
       <View style={[styles.sharedHeaders, { backgroundColor: colors.card }]}>
@@ -824,15 +794,6 @@ export default function TaskDetailScreen() {
         onSelect={handleTransferProject}
       />
 
-      {/* ─── Pause Status Dialog ─── */}
-      <TimerPauseModal
-        visible={showPauseDialog}
-        onClose={() => setShowPauseDialog(false)}
-        sessionDuration={formatTimeWithSeconds(pausedDuration)}
-        statuses={statuses}
-        currentStatusId={task?.custom_status_id || null}
-        onStatusChange={handlePauseStatusChange}
-      />
       {/* ─── Picker Modals ─── */}
       <PickerModal visible={showStatusPicker} onClose={() => setShowStatusPicker(false)} title="Select Status" options={statuses.map(st => ({ value: st.id, label: st.name, color: st.color, subtitle: st.category === 'done' || st.category === 'cancelled' ? 'Completed' : st.is_default ? 'Default' : undefined }))} selectedValue={task?.custom_status_id} onSelect={handleStatusChange} />
       <PickerModal visible={showPriorityPicker} onClose={() => setShowPriorityPicker(false)} title="Select Priority" options={PRIORITIES.map(p => ({ value: p.value, label: p.label, color: p.color }))} selectedValue={task?.priority || 'low'} onSelect={handlePriorityChange} />
@@ -938,30 +899,48 @@ const styles = StyleSheet.create({
   headerBtn: { padding: 6, borderRadius: 10, backgroundColor: '#F8FAFC' },
   headerInfo: { flex: 1 },
   headerCenter: { flex: 1, marginLeft: 8 },
-  headerRight: { marginLeft: 8 },
+  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 4, marginLeft: 8 },
   headerTitle: { fontSize: 14, fontWeight: '700', color: '#0F172A' },
   headerSubtitle: { fontSize: 11, fontWeight: '500', marginTop: 2 },
   headerProject: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
   headerDot: { width: 6, height: 6, borderRadius: 3 },
   headerProjectText: { fontSize: 11, color: '#64748B', fontWeight: '500' },
-  // Timer bar
-  timerBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 10, backgroundColor: '#FAFAFA', borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
-  timerLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  timerIcon: { width: 36, height: 36, borderRadius: 10, backgroundColor: '#F1F5F9', alignItems: 'center', justifyContent: 'center' },
-  timerValue: { fontSize: 18, fontWeight: '700', color: '#1E293B', fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace' },
-  timerSub: { fontSize: 11, color: '#94A3B8', fontWeight: '500' },
-  timerActions: { flexDirection: 'row', gap: 6 },
-  timerBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 8, paddingHorizontal: 12, borderRadius: 10 },
-  timerBtnText: { color: '#FFF', fontSize: 12, fontWeight: '700' },
-  completedBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, backgroundColor: '#F0FDF4' },
-  completedBadgeText: { fontSize: 12, fontWeight: '600', color: '#22C55E' },
-
-  // Mini stats
-  miniStats: { flexDirection: 'row', alignItems: 'center', gap: 16, paddingHorizontal: 16, paddingVertical: 8, backgroundColor: '#FAFAFA', borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
-  miniStatItem: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  miniStatDot: { width: 6, height: 6, borderRadius: 3 },
-  miniStatLabel: { fontSize: 11, color: '#94A3B8' },
-  miniStatValue: { fontSize: 11, fontWeight: '600', color: '#475569' },
+  // Advanced timer widget
+  timerWidget: { flexDirection: 'row', alignItems: 'center', gap: 5, marginRight: 4 },
+  timerPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 11,
+    paddingVertical: 7,
+    borderRadius: 20,
+    borderWidth: 1.5,
+    ...Platform.select({
+      ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.25, shadowRadius: 6 },
+      android: { elevation: 4 },
+    }),
+  },
+  timerDot: { width: 7, height: 7, borderRadius: 4 },
+  timerPillTime: {
+    fontSize: 13,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+    fontVariant: ['tabular-nums'],
+    minWidth: 38,
+    fontFamily: Platform.OS === 'ios' ? 'Courier New' : 'monospace',
+  },
+  timerStopBtn: {
+    width: 26,
+    height: 26,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    ...Platform.select({
+      ios: { shadowColor: '#EF4444', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.2, shadowRadius: 3 },
+      android: { elevation: 2 },
+    }),
+  },
 
   // Bottom tab bar
   bottomTabBar: { flexDirection: 'row', borderTopWidth: 1, borderTopColor: '#F1F5F9', backgroundColor: '#FFF', paddingTop: 6 },

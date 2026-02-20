@@ -60,6 +60,9 @@ export function useTaskTimer(taskId: string, completedStatusId?: string) {
 
     const stateRef = useRef(state);
     useEffect(() => { stateRef.current = state; }, [state]);
+    const projectStatusesRef = useRef<ProjectStatus[]>([]);
+    useEffect(() => { projectStatusesRef.current = projectStatuses; }, [projectStatuses]);
+    const isBusy = useRef(false);
 
     // ─── Fetch all data ─────────────────────────────────────────────
     const fetchData = useCallback(async () => {
@@ -195,12 +198,10 @@ export function useTaskTimer(taskId: string, completedStatusId?: string) {
     // ─── Helper: auto-move to active status ─────────────────────────
     const autoMoveToActive = async () => {
         const cat = stateRef.current.currentStatusCategory;
-        if (cat === 'todo') {
-            // Find the first 'active' status in the project
-            const activeStatus = projectStatuses.find(s => s.category === 'active');
+        if (cat === 'todo' || cat === null) {
+            const activeStatus = projectStatusesRef.current.find(s => s.category === 'active');
             if (activeStatus) {
                 console.log('[Timer] Auto-moving task to active status:', activeStatus.name);
-                // Only write custom_status_id — DB trigger handles status enum, completed_at, first_started_at
                 await supabase.from('tasks').update({ custom_status_id: activeStatus.id }).eq('id', taskId);
             }
         }
@@ -212,11 +213,15 @@ export function useTaskTimer(taskId: string, completedStatusId?: string) {
 
     /** ▶ PLAY — Start timer from idle. Auto-moves task to active status. */
     const startTimer = async () => {
-        if (!user) return;
+        if (!user || isBusy.current) return;
+        isBusy.current = true;
         console.log('[Timer] ▶ START');
 
         try {
             const now = new Date().toISOString();
+
+            // Close any stale open session first (safety net)
+            await closeOpenSession();
 
             // Auto-move to active status if in todo
             await autoMoveToActive();
@@ -235,12 +240,15 @@ export function useTaskTimer(taskId: string, completedStatusId?: string) {
         } catch (error) {
             console.error('[Timer] Start error:', error);
             Alert.alert('Error', 'Failed to start timer');
+        } finally {
+            isBusy.current = false;
         }
     };
 
     /** ⏸ PAUSE — Pause timer, close session. Status stays the same. Returns session duration. */
     const pauseTimer = async (): Promise<number> => {
-        if (!user || !state.isRunning) return 0;
+        if (!user || !stateRef.current.isRunning || isBusy.current) return 0;
+        isBusy.current = true;
         console.log('[Timer] ⏸ PAUSE');
 
         try {
@@ -251,12 +259,15 @@ export function useTaskTimer(taskId: string, completedStatusId?: string) {
             console.error('[Timer] Pause error:', error);
             Alert.alert('Error', 'Failed to pause timer');
             return 0;
+        } finally {
+            isBusy.current = false;
         }
     };
 
     /** ▶ RESUME — Resume from paused state. Does NOT change status. */
     const resumeTimer = async () => {
-        if (!user) return;
+        if (!user || isBusy.current) return;
+        isBusy.current = true;
         console.log('[Timer] ▶ RESUME');
 
         try {
@@ -271,33 +282,42 @@ export function useTaskTimer(taskId: string, completedStatusId?: string) {
         } catch (error) {
             console.error('[Timer] Resume error:', error);
             Alert.alert('Error', 'Failed to resume timer');
+        } finally {
+            isBusy.current = false;
         }
     };
 
-    /** ⏹ STOP — Stop timer completely, close session. Does NOT change status. */
+    /** ⏹ STOP — Stop timer completely, reset to idle. Does NOT change status. */
     const stopTimer = async (): Promise<number> => {
-        if (!user) return 0;
+        if (!user || isBusy.current) return 0;
+        isBusy.current = true;
         console.log('[Timer] ⏹ STOP');
 
         try {
-            const duration = state.isRunning ? await closeOpenSession() : 0;
+            // Close open session if running (closeOpenSession already sets is_timer_running: false)
+            const duration = stateRef.current.isRunning ? await closeOpenSession() : 0;
+            // Ensure is_timer_running is false even if already paused
+            await supabase.from('tasks').update({ is_timer_running: false }).eq('id', taskId);
             await fetchData();
             return duration;
         } catch (error) {
             console.error('[Timer] Stop error:', error);
             Alert.alert('Error', 'Failed to stop timer');
             return 0;
+        } finally {
+            isBusy.current = false;
         }
     };
 
     /** ✓ COMPLETE — Stop timer and mark task as done via custom_status_id. */
     const completeTask = async () => {
-        if (!user) return;
+        if (!user || isBusy.current) return;
+        isBusy.current = true;
         console.log('[Timer] ✓ COMPLETE');
 
         try {
-            // Close any open session first
-            if (state.isRunning) {
+            // Close any open session first (use stateRef to avoid stale closure)
+            if (stateRef.current.isRunning) {
                 await closeOpenSession();
             }
 
@@ -309,7 +329,7 @@ export function useTaskTimer(taskId: string, completedStatusId?: string) {
                 }).eq('id', taskId);
             } else {
                 // Fallback: find done status from project
-                const doneStatus = projectStatuses.find(s => s.category === 'done' || s.is_completed);
+                const doneStatus = projectStatusesRef.current.find(s => s.category === 'done' || s.is_completed);
                 if (doneStatus) {
                     await supabase.from('tasks').update({
                         custom_status_id: doneStatus.id,
@@ -321,13 +341,15 @@ export function useTaskTimer(taskId: string, completedStatusId?: string) {
         } catch (error) {
             console.error('[Timer] Complete error:', error);
             Alert.alert('Error', 'Failed to complete task');
+        } finally {
+            isBusy.current = false;
         }
     };
 
     /** 🗑 DELETE SESSION — Remove a session and adjust total_work_time. */
     const deleteSession = async (sessionId: string) => {
         try {
-            const session = state.sessions.find(s => s.id === sessionId);
+            const session = stateRef.current.sessions.find(s => s.id === sessionId);
             if (!session) return;
 
             // If deleting the active session, stop the timer

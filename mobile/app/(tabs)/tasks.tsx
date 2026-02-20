@@ -15,6 +15,8 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { isPast, isToday, format, parseISO } from 'date-fns';
 import { MyTasksHeader } from '@/components/my_tasks/MyTasksHeader';
 import { TasksSkeleton } from '@/components/ui/Skeleton';
+import { OptimizedTimerBanner } from '@/components/OptimizedTimerBanner';
+import { useTimerActions } from '@/stores/useTaskStore';
 
 // ─── Types ───────────────────────────────────────────────────────
 interface ProjectInfo { id: string; name: string; color: string | null }
@@ -55,6 +57,7 @@ export default function TasksScreen() {
     const { user } = useAuth();
     const { colors, colorScheme } = useTheme();
     const isDark = colorScheme === 'dark';
+    const { syncWithRealtime } = useTimerActions();
 
     // Data
     const [tasks, setTasks] = useState<TaskItem[]>([]);
@@ -172,6 +175,27 @@ export default function TasksScreen() {
             .subscribe();
         return () => { supabase.removeChannel(ch); };
     }, [currentWorkspace?.id, projects]);
+
+    // Timer-specific realtime for instant sync
+    useEffect(() => {
+        if (!user) return;
+        const ch = supabase
+            .channel('timer-sync-tasks')
+            .on('postgres_changes', {
+                event: 'UPDATE',
+                schema: 'public',
+                table: 'tasks',
+                filter: `assigned_to=eq.${user.id}`,
+            }, (payload) => syncWithRealtime(payload, user))
+            .on('postgres_changes', {
+                event: 'UPDATE',
+                schema: 'public',
+                table: 'tasks',
+                filter: `created_by=eq.${user.id}`,
+            }, (payload) => syncWithRealtime(payload, user))
+            .subscribe();
+        return () => supabase.removeChannel(ch);
+    }, [user]);
 
     const onRefresh = () => { setRefreshing(true); fetchTasks(); };
 
@@ -332,6 +356,7 @@ export default function TasksScreen() {
     return (
         <View style={[s.container, { backgroundColor: colors.background }]}>
             <MyTasksHeader stats={stats} />
+            <OptimizedTimerBanner />
 
             {/* Search bar */}
             <View style={s.searchRow}>

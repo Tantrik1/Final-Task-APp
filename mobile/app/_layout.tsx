@@ -12,6 +12,7 @@ import { supabase } from '@/lib/supabase';
 import { FirstLoginPasswordPrompt } from '@/components/FirstLoginPasswordPrompt';
 import { WorkspaceProvider } from '@/hooks/useWorkspace';
 import { ThemeProvider } from '@/contexts/ThemeContext';
+import { useTimerInit } from '@/hooks/useTimerInit';
 
 import { useColorScheme } from '@/components/useColorScheme';
 
@@ -75,7 +76,14 @@ function RootLayoutNav() {
   const colorScheme = useColorScheme();
   const { user, isLoading: authLoading, isRecoveryMode } = useAuth();
   const segments = useSegments();
+  // Extract primitive string so the effect dependency is stable across renders.
+  // useSegments() returns a new array reference every render, which would cause
+  // an infinite re-render loop if used directly in a dependency array.
+  const segment0 = segments[0] as string | undefined;
   const router = useRouter();
+
+  // Initialize timer store with user
+  useTimerInit();
   const [isCheckingProfile, setIsCheckingProfile] = useState(false);
   const [showPasswordPrompt, setShowPasswordPrompt] = useState(false);
   const lastCheckedUserId = useRef<string | null>(null);
@@ -84,8 +92,8 @@ function RootLayoutNav() {
     const handleNavigation = async () => {
       if (authLoading || isCheckingProfile) return;
 
-      const inAuthGroup = segments[0] === "auth";
-      const inInvitation = segments[0] === "invitation";
+      const inAuthGroup = segment0 === "auth";
+      const inInvitation = segment0 === "invitation";
 
       if (!user) {
         lastCheckedUserId.current = null;
@@ -147,10 +155,10 @@ function RootLayoutNav() {
 
           if (!memError && (!memberships || memberships.length === 0)) {
             // No workspaces - go to onboarding
-            if (segments[0] !== "onboarding") {
+            if (segment0 !== "onboarding") {
               router.replace("/onboarding");
             }
-          } else if (inAuthGroup || segments[0] === "onboarding") {
+          } else if (inAuthGroup || segment0 === "onboarding") {
             // Has workspaces and is in auth/onboarding - go to dashboard/tabs
             router.replace("/(tabs)");
           }
@@ -165,7 +173,9 @@ function RootLayoutNav() {
     };
 
     handleNavigation();
-  }, [user, authLoading, segments, isRecoveryMode]);
+    // segment0 is a stable primitive string extracted from segments[0];
+    // using segments directly would cause infinite loops (new array ref each render)
+  }, [user, authLoading, segment0, isRecoveryMode]);
 
   if (authLoading) {
     return (
@@ -179,29 +189,29 @@ function RootLayoutNav() {
     <ThemeProvider>
       <NavThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
         <WorkspaceProvider>
-        <FirstLoginPasswordPrompt
-          visible={showPasswordPrompt}
-          onComplete={() => setShowPasswordPrompt(false)}
-          onSkip={() => setShowPasswordPrompt(false)}
-        />
-        <Stack screenOptions={{ headerShown: false }}>
-          <Stack.Screen name="auth/index" options={{ headerShown: false }} />
-          <Stack.Screen name="auth/reset" options={{ headerShown: false }} />
-          <Stack.Screen name="onboarding" options={{ headerShown: false }} />
-          <Stack.Screen name="invitation" options={{ headerShown: false }} />
-          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-          <Stack.Screen name="project/[id]" options={{ headerShown: false, animation: 'slide_from_right', gestureEnabled: true, fullScreenGestureEnabled: true }} />
-          <Stack.Screen name="task/[id]" options={{ headerShown: false, animation: 'slide_from_right', gestureEnabled: true, fullScreenGestureEnabled: true }} />
-          <Stack.Screen name="notifications" options={{ headerShown: false, animation: 'slide_from_right' }} />
-          <Stack.Screen name="settings" options={{ headerShown: false, animation: 'slide_from_right', gestureEnabled: true, fullScreenGestureEnabled: true }} />
-          <Stack.Screen name="profile" options={{ headerShown: false, animation: 'slide_from_right', gestureEnabled: true, fullScreenGestureEnabled: true }} />
-          <Stack.Screen name="menu" options={{ headerShown: false, animation: 'fade' }} />
-          <Stack.Screen name="activity-log" options={{ headerShown: false, animation: 'slide_from_right' }} />
-          <Stack.Screen name="ai-assistant" options={{ headerShown: false, animation: 'slide_from_bottom', gestureEnabled: true, fullScreenGestureEnabled: true }} />
-          <Stack.Screen name="modal" options={{ presentation: 'modal', gestureEnabled: true, fullScreenGestureEnabled: true }} />
-        </Stack>
-      </WorkspaceProvider>
-    </NavThemeProvider>
+          <FirstLoginPasswordPrompt
+            visible={showPasswordPrompt}
+            onComplete={() => setShowPasswordPrompt(false)}
+            onSkip={() => setShowPasswordPrompt(false)}
+          />
+          <Stack screenOptions={{ headerShown: false }}>
+            <Stack.Screen name="auth/index" options={{ headerShown: false }} />
+            <Stack.Screen name="auth/reset" options={{ headerShown: false }} />
+            <Stack.Screen name="onboarding" options={{ headerShown: false }} />
+            <Stack.Screen name="invitation" options={{ headerShown: false }} />
+            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+            <Stack.Screen name="project/[id]" options={{ headerShown: false, animation: 'slide_from_right', gestureEnabled: true, fullScreenGestureEnabled: true }} />
+            <Stack.Screen name="task/[id]" options={{ headerShown: false, animation: 'slide_from_right', gestureEnabled: true, fullScreenGestureEnabled: true }} />
+            <Stack.Screen name="notifications" options={{ headerShown: false, animation: 'slide_from_right' }} />
+            <Stack.Screen name="settings" options={{ headerShown: false, animation: 'slide_from_right', gestureEnabled: true, fullScreenGestureEnabled: true }} />
+            <Stack.Screen name="profile" options={{ headerShown: false, animation: 'slide_from_right', gestureEnabled: true, fullScreenGestureEnabled: true }} />
+            <Stack.Screen name="menu" options={{ headerShown: false, animation: 'fade' }} />
+            <Stack.Screen name="activity-log" options={{ headerShown: false, animation: 'slide_from_right' }} />
+            <Stack.Screen name="ai-assistant" options={{ headerShown: false, animation: 'slide_from_bottom', gestureEnabled: true, fullScreenGestureEnabled: true }} />
+            <Stack.Screen name="modal" options={{ presentation: 'modal', gestureEnabled: true, fullScreenGestureEnabled: true }} />
+          </Stack>
+        </WorkspaceProvider>
+      </NavThemeProvider>
     </ThemeProvider>
   );
 }

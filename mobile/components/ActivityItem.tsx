@@ -27,6 +27,9 @@ import {
     ListMinus,
     ArrowUpDown,
     Pencil,
+    SquareCheck,
+    Square,
+    ListTodo,
 } from 'lucide-react-native';
 import { formatDistanceToNow, isToday, isYesterday, format } from 'date-fns';
 
@@ -101,6 +104,12 @@ const getActivityIcon = (type: string, entityType: string) => {
         case 'rename_status': return { icon: Pencil, color: '#F97316', bg: '#FFF7ED' };
         case 'delete_status': return { icon: ListMinus, color: '#EF4444', bg: '#FEF2F2' };
         case 'reorder_status': return { icon: ArrowUpDown, color: '#64748B', bg: '#F1F5F9' };
+
+        // Checklists
+        case 'checklist_add': return { icon: ListTodo, color: '#6366F1', bg: '#EEF2FF' };
+        case 'checklist_check': return { icon: SquareCheck, color: '#22C55E', bg: '#F0FDF4' };
+        case 'checklist_uncheck': return { icon: Square, color: '#94A3B8', bg: '#F8FAFC' };
+        case 'checklist_delete': return { icon: Trash2, color: '#EF4444', bg: '#FEF2F2' };
 
         default: return { icon: Activity, color: '#64748B', bg: '#F1F5F9' };
     }

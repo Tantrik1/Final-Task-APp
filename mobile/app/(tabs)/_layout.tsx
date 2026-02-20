@@ -1,4 +1,4 @@
-import { Tabs } from 'expo-router';
+import { Tabs, useRouter } from 'expo-router';
 import { View, Platform, StyleSheet } from 'react-native';
 import {
     Home,
@@ -10,8 +10,10 @@ import {
 import { DashboardHeader } from '@/components/DashboardHeader';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
 import { GlobalTabBar } from '@/components/GlobalTabBar';
+import { RefreshBus } from '@/lib/refreshBus';
 
 export default function TabLayout() {
+    const router = useRouter();
     usePushNotifications();
 
     return (
@@ -19,7 +21,7 @@ export default function TabLayout() {
             tabBar={() => <GlobalTabBar />}
             screenOptions={{
                 headerShown: true,
-                header: () => <DashboardHeader />,
+                header: () => <DashboardHeader onRefresh={() => RefreshBus.emit(() => router.replace('/(tabs)'))} />,
             }}
         >
             {/* 1. Calendar */}

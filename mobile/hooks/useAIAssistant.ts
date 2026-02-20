@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '@/lib/supabase';
 import { useWorkspace } from './useWorkspace';
@@ -377,7 +377,7 @@ interface WsContext {
 
 async function buildWsContext(wsId: string): Promise<WsContext> {
     if (__DEV__) console.log('[HamroAI] Building workspace context for wsId:', wsId);
-    
+
     const { data: projs } = await supabase.from('projects').select('id, name').eq('workspace_id', wsId).eq('is_archived', false);
     const projects = (projs || []) as { id: string; name: string }[];
     const projectIds = projects.map(p => p.id);
@@ -439,19 +439,19 @@ async function executeToolCall(name: ToolType, args: any, ctx: WsContext, userId
                 console.log('[HamroAI] Workspace context - projects:', ctx.projects.length, 'members:', Object.keys(ctx.memberRoles).length);
                 console.log('[HamroAI] Project IDs from context:', projectIds);
             }
-            
+
             let pIds = [...projectIds];
             if (args.project_name) {
                 const filtered = ctx.projects.filter(p => p.name.toLowerCase().includes(args.project_name.toLowerCase()));
                 if (filtered.length) pIds = filtered.map(p => p.id);
                 if (__DEV__) console.log('[HamroAI] After project_name filter, pIds:', pIds);
             }
-            
+
             if (!pIds.length) {
                 if (__DEV__) console.log('[HamroAI] No project IDs available for search');
                 return { tasks: [], message: 'No projects found in workspace.' };
             }
-            
+
             let q = supabase.from('tasks').select('id, title, status, priority, due_date, assigned_to, project_id').in('project_id', pIds);
             // Use full-text search for better performance on large datasets
             if (args.query) {
@@ -460,21 +460,21 @@ async function executeToolCall(name: ToolType, args: any, ctx: WsContext, userId
             if (args.status) q = q.eq('status', args.status);
             if (args.priority) q = q.eq('priority', args.priority);
             if (args.overdue_only) { q = (q as any).lt('due_date', new Date().toISOString().split('T')[0]).neq('status', 'done'); }
-            
+
             const { data: tasks } = await q.limit(MAX_RESULT_ITEMS);
-            
+
             if (__DEV__) {
                 console.log('[HamroAI] Database query returned tasks:', tasks?.length || 0);
                 if (tasks?.length) console.log('[HamroAI] Sample task:', tasks[0]);
             }
-            
+
             if (!tasks?.length) return { tasks: [], message: 'No tasks found.' };
-            
+
             let result = tasks.map((t: any) => ({ id: t.id, title: t.title, status: t.status, priority: t.priority, due_date: t.due_date, assignee: profileMap[t.assigned_to] || 'Unassigned', project: projectMap[t.project_id] || 'Unknown', days_overdue: (t.due_date && t.status !== 'done') ? Math.max(0, Math.floor((Date.now() - new Date(t.due_date).getTime()) / 86400000)) : 0 }));
             if (args.assignee_name) result = result.filter((t: any) => t.assignee.toLowerCase().includes(args.assignee_name.toLowerCase()));
-            
+
             if (__DEV__) console.log('[HamroAI] Final result count:', result.length);
-            
+
             return { tasks: result, total: result.length };
         }
 
@@ -544,7 +544,7 @@ async function executeToolCall(name: ToolType, args: any, ctx: WsContext, userId
             const baseUpdates: any = {};
             if (args.priority) baseUpdates.priority = args.priority;
             if (args.due_date) baseUpdates.due_date = args.due_date;
-            
+
             // If status change requested, resolve custom_status_id per project (trigger handles status/completed_at)
             if (args.status && args.task_ids?.length) {
                 const { data: taskRows } = await supabase.from('tasks').select('id, project_id').in('id', args.task_ids);
@@ -553,7 +553,7 @@ async function executeToolCall(name: ToolType, args: any, ctx: WsContext, userId
                     const { data: allStatuses } = await supabase.from('project_statuses').select('id, name, project_id, category, is_default, is_completed').in('project_id', projIds);
                     const statusesByProject = new Map<string, any[]>();
                     (allStatuses || []).forEach((s: any) => { if (!statusesByProject.has(s.project_id)) statusesByProject.set(s.project_id, []); statusesByProject.get(s.project_id)!.push(s); });
-                    
+
                     const results: string[] = [];
                     for (const t of taskRows) {
                         const projStatuses = statusesByProject.get(t.project_id) || [];
@@ -571,7 +571,7 @@ async function executeToolCall(name: ToolType, args: any, ctx: WsContext, userId
                     return { success: true, updated_count: results.length, updated_titles: results };
                 }
             }
-            
+
             const { data, error } = await supabase.from('tasks').update(baseUpdates).in('id', args.task_ids).select('title');
             if (error) throw error;
             return { success: true, updated_count: data?.length || 0, updated_titles: data?.map((t: any) => t.title) || [] };
@@ -885,24 +885,24 @@ function parseButtonsFromResponse(content: string): { text: string; buttons: Sma
     // Try both formats: with and without backticks
     const buttonRegexWithBackticks = /```buttons\s*([\s\S]*?)```/;
     const buttonRegexWithoutBackticks = /^buttons\s*\n([\s\S]*?)\nbuttons$/m;
-    
+
     let match = content.match(buttonRegexWithBackticks);
     if (!match) {
         match = content.match(buttonRegexWithoutBackticks);
     }
-    
+
     // Debug: Log the raw AI response
     if (__DEV__) console.log('[HamroAI] Raw AI response:', content);
     if (__DEV__) console.log('[HamroAI] Button match found:', !!match);
-    
+
     if (!match) return { text: content, buttons: null };
     try {
         const buttons: SmartButton[] = JSON.parse(match[1].trim());
         const text = content.replace(match[0], '').trim();
-        
+
         // Debug: Log parsed buttons
         if (__DEV__) console.log('[HamroAI] Parsed buttons:', buttons);
-        
+
         return { text, buttons };
     } catch (err) {
         // Debug: Log parsing errors
@@ -986,14 +986,18 @@ export function useAIAssistant() {
 
     const wsId = currentWorkspace?.id || '';
     const userId = user?.id || '';
-    
-    // Load multiple API keys from env (GROQ_API_KEY, GROQ_API_KEY_2, GROQ_API_KEY_3)
-    const apiKeys = [
+
+    // Load multiple API keys from env — memoized so the array reference is stable across renders
+    const apiKeys = useMemo(() => [
         process.env.EXPO_PUBLIC_GROQ_API_KEY,
         process.env.EXPO_PUBLIC_GROQ_API_KEY_2,
         process.env.EXPO_PUBLIC_GROQ_API_KEY_3,
-    ].filter(Boolean) as string[];
-    
+    ].filter(Boolean) as string[], []);
+
+    // Keep a ref so sendMessage can always read the latest apiKeys without re-creating the callback
+    const apiKeysRef = useRef(apiKeys);
+    useEffect(() => { apiKeysRef.current = apiKeys; }, [apiKeys]);
+
     const storageKey = wsId ? `${STORAGE_KEY_PREFIX}${wsId}` : '';
 
     // Keep messagesRef in sync
@@ -1023,7 +1027,7 @@ export function useAIAssistant() {
         if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
         saveTimerRef.current = setTimeout(() => {
             const toSave = messages.filter(m => !m.isLoading && m.content);
-            AsyncStorage.setItem(storageKey, JSON.stringify(toSave)).catch(() => {});
+            AsyncStorage.setItem(storageKey, JSON.stringify(toSave)).catch(() => { });
         }, 1000);
         return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
     }, [messages, storageKey]);
@@ -1040,6 +1044,7 @@ export function useAIAssistant() {
 
     const sendMessage = useCallback(async (userText: string) => {
         if (!userText.trim() || isLoading || !wsId) return;
+        const apiKeys = apiKeysRef.current;
         abortRef.current = false;
         setIsLoading(true);
         setLastFailedPrompt(null);
@@ -1140,24 +1145,24 @@ export function useAIAssistant() {
                                     const errText = await response.text();
                                     const isRateLimit = response.status === 429 || errText.includes('rate_limit');
                                     const isBadUrl = errText.includes('unknown_url') || errText.includes('Unknown request URL');
-                                    
+
                                     if (isBadUrl) {
                                         throw new Error('Invalid API URL. The endpoint has changed. Please update the app.');
                                     }
-                                    
+
                                     if (isRateLimit) {
                                         if (__DEV__) console.log(`[HamroAI] Rate limit on key ${keyIdx + 1}, model ${model}, retry ${retry + 1}`);
                                         lastError = new Error(`Rate limit (key ${keyIdx + 1})`);
                                         await new Promise(r => setTimeout(r, Math.min(1000 * (retry + 1), 3000)));
                                         continue;
                                     }
-                                    
+
                                     throw new Error(`API error ${response.status}: ${errText.slice(0, 200)}`);
                                 }
 
                                 data = await response.json();
                                 success = true;
-                                
+
                                 if (modelIdx > 0 || keyIdx > 0) {
                                     if (__DEV__) console.log(`[HamroAI] Fallback success: key ${keyIdx + 1}, model ${model}`);
                                 }
@@ -1235,7 +1240,7 @@ export function useAIAssistant() {
         } finally {
             setIsLoading(false);
         }
-    }, [isLoading, wsId, userId, apiKeys, addMessage, updateMessage]);
+    }, [isLoading, wsId, userId, addMessage, updateMessage]);
 
     // Fix 5: Retry function
     const retryLastMessage = useCallback(() => {
@@ -1257,8 +1262,9 @@ export function useAIAssistant() {
     }, [lastFailedPrompt, sendMessage]);
 
     const transcribeAudio = useCallback(async (audioUri: string): Promise<string> => {
+        const apiKeys = apiKeysRef.current;
         if (apiKeys.length === 0) throw new Error('No API key configured');
-        
+
         const formData = new FormData();
         formData.append('file', { uri: audioUri, type: 'audio/m4a', name: 'recording.m4a' } as any);
         formData.append('model', WHISPER_MODEL);
@@ -1282,21 +1288,21 @@ export function useAIAssistant() {
                     }
                     throw new Error(`Transcription failed: ${response.status}`);
                 }
-                
+
                 const data = await response.json() as any;
                 return data.text || '';
             } catch (err: any) {
                 lastError = err;
             }
         }
-        
+
         throw lastError || new Error('Transcription failed on all API keys');
-    }, [apiKeys]);
+    }, []);
 
     const clearMessages = useCallback(() => {
         setMessages([]);
         setLastFailedPrompt(null);
-        if (storageKey) AsyncStorage.removeItem(storageKey).catch(() => {});
+        if (storageKey) AsyncStorage.removeItem(storageKey).catch(() => { });
     }, [storageKey]);
 
     const stopGeneration = useCallback(() => {

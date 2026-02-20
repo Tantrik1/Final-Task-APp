@@ -32,6 +32,7 @@ import {
 import { formatDistanceToNow } from 'date-fns';
 import { supabase } from '@/lib/supabase';
 import { useTheme } from '@/contexts/ThemeContext';
+import { TaskChecklist } from '@/components/task/TaskChecklist';
 
 const getFileIcon = (fileType: string) => {
   if (fileType?.startsWith('image/')) return ImageIcon;
@@ -350,6 +351,9 @@ export function TaskDetailsTab({ taskId, task, attachments, links, userId, onTas
           )}
         </View>
       )}
+
+      {/* ─── Checklist ─── */}
+      <TaskChecklist taskId={taskId} />
 
       {/* ─── Meta info ─── */}
       <View style={[styles.divider, { backgroundColor: colors.borderLight }]} />
