@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { Alert } from 'react-native';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
@@ -123,6 +123,10 @@ export function useNotifications(): UseNotificationsReturn {
     const [hasNewNotification, setHasNewNotification] = useState(false);
     const [hasMore, setHasMore] = useState(true);
     const [isLoadingMore, setIsLoadingMore] = useState(false);
+    // BUG-08 FIX: Keep a ref in sync with notifications state so loadOlderNotifications
+    // can always read the latest list without capturing it in the closure.
+    const notificationsRef = useRef<Notification[]>([]);
+    useEffect(() => { notificationsRef.current = notifications; }, [notifications]);
 
     // Debug logging
     // useEffect(() => {
@@ -206,8 +210,9 @@ export function useNotifications(): UseNotificationsReturn {
 
         setIsLoadingMore(true);
         try {
-            // Get the oldest notification we currently have
-            const readNotifications = notifications.filter(n => n.is_read);
+            // BUG-08 FIX: Access notifications via ref to avoid stale closure.
+            // notificationsRef is kept in sync with state via a useEffect below.
+            const readNotifications = notificationsRef.current.filter((n: Notification) => n.is_read);
             const oldestRead = readNotifications[readNotifications.length - 1];
             if (!oldestRead) {
                 setHasMore(false);
@@ -240,7 +245,10 @@ export function useNotifications(): UseNotificationsReturn {
         } finally {
             setIsLoadingMore(false);
         }
-    }, [user?.id, currentWorkspace?.id, hasMore, isLoadingMore, notifications]);
+    }, [user?.id, currentWorkspace?.id, hasMore, isLoadingMore]);
+    // BUG-08 FIX: The notifications array is read via ref (see notificationsRef below)
+    // so we can drop it from deps. This prevents a new callback on every realtime
+    // notification which would make the stale closure problem re-occur.
 
     // Fetch Project/Task Activity for the "Projects" tab
     const fetchProjectActivity = useCallback(async () => {
@@ -281,7 +289,7 @@ export function useNotifications(): UseNotificationsReturn {
             console.error('Error fetching project activity:', error);
             return [];
         }
-    }, [user?.id, currentWorkspace]);
+    }, [user?.id, currentWorkspace?.id]);
 
     // Fetch preferences
     const fetchPreferences = useCallback(async () => {
@@ -469,7 +477,10 @@ export function useNotifications(): UseNotificationsReturn {
         return () => {
             supabase.removeChannel(channel);
         };
-    }, [user?.id, currentWorkspace?.id, fetchNotifications, fetchPreferences]);
+        // BUG-03 FIX: Only depend on primitive IDs, NOT on function callbacks
+        // (fetchNotifications/fetchPreferences change reference every render when
+        // currentWorkspace object changes, causing duplicate channel subscriptions)
+    }, [user?.id, currentWorkspace?.id]);
 
     return {
         notifications,

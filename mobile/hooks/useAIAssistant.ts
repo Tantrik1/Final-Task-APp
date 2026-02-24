@@ -452,16 +452,52 @@ async function executeToolCall(name: ToolType, args: any, ctx: WsContext, userId
                 return { tasks: [], message: 'No projects found in workspace.' };
             }
 
-            let q = supabase.from('tasks').select('id, title, status, priority, due_date, assigned_to, project_id').in('project_id', pIds);
-            // Use full-text search for better performance on large datasets
-            if (args.query) {
-                q = q.textSearch('search_vector', args.query, { type: 'websearch', config: 'english' });
-            }
+            // Build base query with all DB-level filters (status, priority, overdue)
+            let q = supabase
+                .from('tasks')
+                .select('id, title, description, status, priority, due_date, assigned_to, project_id')
+                .in('project_id', pIds);
             if (args.status) q = q.eq('status', args.status);
             if (args.priority) q = q.eq('priority', args.priority);
-            if (args.overdue_only) { q = (q as any).lt('due_date', new Date().toISOString().split('T')[0]).neq('status', 'done'); }
+            if (args.overdue_only) {
+                q = (q as any)
+                    .lt('due_date', new Date().toISOString().split('T')[0])
+                    .neq('status', 'done');
+            }
 
-            const { data: tasks } = await q.limit(MAX_RESULT_ITEMS);
+            // M-02 FIX: Try search_vector full-text search first (GIN-indexed, covers
+            // title + description). If the column is missing in this deployment or the
+            // query returns no results, fall back to ilike on title + description.
+            let rawTasks: any[] | null = null;
+            if (args.query) {
+                try {
+                    const { data: ftData, error: ftErr } = await (q as any)
+                        .textSearch('search_vector', args.query, {
+                            type: 'websearch',
+                            config: 'english',
+                        })
+                        .limit(MAX_RESULT_ITEMS);
+                    if (!ftErr && ftData && ftData.length > 0) {
+                        rawTasks = ftData;
+                        if (__DEV__) console.log('[HamroAI] FTS returned', ftData.length, 'results');
+                    }
+                } catch (_) {
+                    // search_vector column may not exist on this deployment — swallow error
+                }
+                if (!rawTasks) {
+                    // Fallback: ilike on both title AND description
+                    const { data } = await q
+                        .or(`title.ilike.%${args.query}%,description.ilike.%${args.query}%`)
+                        .limit(MAX_RESULT_ITEMS);
+                    rawTasks = data ?? [];
+                    if (__DEV__) console.log('[HamroAI] ilike fallback returned', rawTasks.length, 'results');
+                }
+            } else {
+                const { data } = await q.limit(MAX_RESULT_ITEMS);
+                rawTasks = data ?? [];
+            }
+
+            const tasks = rawTasks;
 
             if (__DEV__) {
                 console.log('[HamroAI] Database query returned tasks:', tasks?.length || 0);
@@ -1049,6 +1085,15 @@ export function useAIAssistant() {
         setIsLoading(true);
         setLastFailedPrompt(null);
 
+        // BUG-04 FIX: Snapshot history BEFORE calling addMessage.
+        // Previously, addMessage triggered setState which asynchronously updated messagesRef,
+        // occasionally putting the new user message into history and causing it to appear twice
+        // in the API payload. By snapshotting first, the new user message is never in history.
+        const history = messagesRef.current
+            .filter(m => (m.role === 'user' || m.role === 'assistant') && !m.isLoading && m.content.trim())
+            .slice(-10)
+            .map(m => ({ role: m.role as 'user' | 'assistant', content: m.content }));
+
         addMessage({ role: 'user', content: userText });
         const loadingId = addMessage({ role: 'assistant', content: '', isLoading: true, status: 'Thinking...' });
 
@@ -1068,17 +1113,7 @@ export function useAIAssistant() {
             let briefing = '';
             try { briefing = await buildWorkspaceBriefing(wsId, userId); } catch { briefing = ''; }
 
-            // Fix 1: Use messagesRef for fresh state, filter out loading/empty messages
-            const history = messagesRef.current
-                .filter(m => (m.role === 'user' || m.role === 'assistant') && !m.isLoading && m.content.trim())
-                .slice(-10)
-                .map(m => ({ role: m.role as 'user' | 'assistant', content: m.content }));
-
-            // Remove the userText we just added (it's explicitly appended below)
-            const lastHistoryMsg = history[history.length - 1];
-            if (lastHistoryMsg?.role === 'user' && lastHistoryMsg.content === userText) {
-                history.pop();
-            }
+            // history already built above (before addMessage) — no deduplication needed
 
             const apiMessages: any[] = [
                 { role: 'system', content: SYSTEM_PROMPT + (briefing ? '\n\n' + briefing : '') },
@@ -1114,9 +1149,11 @@ export function useAIAssistant() {
                         for (let retry = 0; retry < MAX_RETRIES_PER_CONFIG && !success; retry++) {
                             if (abortRef.current) break;
 
+                            // BUG-09 FIX: Declare timeout outside try/catch so it's in scope in catch
+                            let timeout: ReturnType<typeof setTimeout> | undefined;
                             try {
                                 const controller = new AbortController();
-                                const timeout = setTimeout(() => controller.abort(), 30000);
+                                timeout = setTimeout(() => controller.abort(), 30000);
 
                                 const url = `${GROQ_API_URL}/chat/completions`;
                                 const reqBody = JSON.stringify({
@@ -1167,6 +1204,9 @@ export function useAIAssistant() {
                                     if (__DEV__) console.log(`[HamroAI] Fallback success: key ${keyIdx + 1}, model ${model}`);
                                 }
                             } catch (err: any) {
+                                // BUG-09 FIX: Always clear the abort timeout, even on error,
+                                // to prevent a 30-second dangling timer per failed request.
+                                clearTimeout(timeout);
                                 lastError = err;
                                 if (err.name === 'AbortError') {
                                     if (__DEV__) console.log(`[HamroAI] Timeout on key ${keyIdx + 1}, model ${model}`);

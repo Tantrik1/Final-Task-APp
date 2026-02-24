@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useCallback } from 'react';
+import React, { useEffect, useRef, useCallback, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Animated } from 'react-native';
 import { Timer, Square, ChevronRight } from 'lucide-react-native';
 import { supabase } from '@/lib/supabase';
@@ -23,32 +23,31 @@ const OptimizedTimerBanner = React.memo(() => {
     const { colors, colorScheme } = useTheme();
     const isDark = colorScheme === 'dark';
     const router = useRouter();
-    
+
     const activeTimer = useActiveTimer();
     const isTimerRunning = useIsTimerRunning();
     const { stopTimer, clearError } = useTimerActions();
-    
-    // Ref-based timer text to avoid re-renders
-    const timerTextRef = useRef<Text>(null);
+
     const pulseAnim = useRef(new Animated.Value(1)).current;
     const intervalRef = useRef<any>(null);
 
-    // ─── Live tick with ref-based DOM update ─────────────────────────
+    // ─── Live tick with state-based update ──────────────────────────────────
+    // BUG-10 FIX: setNativeProps is deprecated/broken on the New Architecture (Fabric).
+    // Use a plain state update every second instead. The component is memoized so
+    // this re-render only affects the single Text node.
+    const [displayTime, setDisplayTime] = useState('0:00');
+
     useEffect(() => {
-        if (!activeTimer || !timerTextRef.current) {
-            if (timerTextRef.current) {
-                timerTextRef.current.setNativeProps({ text: '0:00' });
-            }
+        if (!activeTimer) {
+            setDisplayTime('0:00');
             return;
         }
 
         const sessionStart = new Date(activeTimer.started_at).getTime();
         const tick = () => {
-            if (timerTextRef.current) {
-                const sessionElapsed = Math.floor((Date.now() - sessionStart) / 1000);
-                const totalElapsed = activeTimer.total_work_time + sessionElapsed;
-                timerTextRef.current.setNativeProps({ text: formatLive(totalElapsed) });
-            }
+            const sessionElapsed = Math.floor((Date.now() - sessionStart) / 1000);
+            const totalElapsed = activeTimer.total_work_time + sessionElapsed;
+            setDisplayTime(formatLive(totalElapsed));
         };
 
         tick(); // Initial tick
@@ -124,11 +123,11 @@ const OptimizedTimerBanner = React.memo(() => {
 
             {/* Right: live timer + stop + chevron */}
             <View style={styles.right}>
-                <Text 
-                    ref={timerTextRef}
+                <Text
                     style={[styles.timerText, { color: isDark ? '#4ADE80' : '#16A34A' }]}
                 >
-                    0:00
+                    {/* BUG-10 FIX: Render displayTime from state instead of setNativeProps */}
+                    {displayTime}
                 </Text>
                 <TouchableOpacity
                     onPress={handleStop}

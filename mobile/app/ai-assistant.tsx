@@ -99,19 +99,19 @@ const MessageText = ({ content, isUser }: { content: string; isUser: boolean }) 
 // ─── Smart Button ─────────────────────────────────────────────────────────────
 
 const BUTTON_CONFIGS: Record<string, { icon: React.ReactNode; colors: readonly [string, string] }> = {
-    open_project:         { icon: <FolderOpen size={14} color="#fff" />,    colors: ['#6366F1', '#4338CA'] },
-    open_task:            { icon: <ExternalLink size={14} color="#fff" />,  colors: ['#8B5CF6', '#6D28D9'] },
-    open_member:          { icon: <UserCheck size={14} color="#fff" />,     colors: ['#0EA5E9', '#0284C7'] },
-    view_overdue:         { icon: <AlertTriangle size={14} color="#fff" />, colors: ['#F97316', '#EA580C'] },
-    confirm_bulk:         { icon: <CheckCircle size={14} color="#fff" />,   colors: ['#10B981', '#059669'] },
-    reschedule_overdue:   { icon: <Zap size={14} color="#fff" />,           colors: ['#F59E0B', '#D97706'] },
-    add_tasks:            { icon: <Sparkles size={14} color="#fff" />,      colors: ['#6366F1', '#4338CA'] },
-    change_priority:      { icon: <AlertTriangle size={14} color="#fff" />, colors: ['#EF4444', '#DC2626'] },
-    start_timer:          { icon: <Zap size={14} color="#fff" />,           colors: ['#10B981', '#059669'] },
-    suggest_redistribution:{ icon: <UserCheck size={14} color="#fff" />,   colors: ['#0EA5E9', '#0284C7'] },
-    notify_members:       { icon: <Sparkles size={14} color="#fff" />,      colors: ['#8B5CF6', '#6D28D9'] },
-    undo_last_action:     { icon: <RotateCcw size={14} color="#fff" />,     colors: ['#64748B', '#475569'] },
-    speak:                { icon: <Volume2 size={14} color="#fff" />,        colors: ['#22C55E', '#16A34A'] },
+    open_project: { icon: <FolderOpen size={14} color="#fff" />, colors: ['#6366F1', '#4338CA'] },
+    open_task: { icon: <ExternalLink size={14} color="#fff" />, colors: ['#8B5CF6', '#6D28D9'] },
+    open_member: { icon: <UserCheck size={14} color="#fff" />, colors: ['#0EA5E9', '#0284C7'] },
+    view_overdue: { icon: <AlertTriangle size={14} color="#fff" />, colors: ['#F97316', '#EA580C'] },
+    confirm_bulk: { icon: <CheckCircle size={14} color="#fff" />, colors: ['#10B981', '#059669'] },
+    reschedule_overdue: { icon: <Zap size={14} color="#fff" />, colors: ['#F59E0B', '#D97706'] },
+    add_tasks: { icon: <Sparkles size={14} color="#fff" />, colors: ['#6366F1', '#4338CA'] },
+    change_priority: { icon: <AlertTriangle size={14} color="#fff" />, colors: ['#EF4444', '#DC2626'] },
+    start_timer: { icon: <Zap size={14} color="#fff" />, colors: ['#10B981', '#059669'] },
+    suggest_redistribution: { icon: <UserCheck size={14} color="#fff" />, colors: ['#0EA5E9', '#0284C7'] },
+    notify_members: { icon: <Sparkles size={14} color="#fff" />, colors: ['#8B5CF6', '#6D28D9'] },
+    undo_last_action: { icon: <RotateCcw size={14} color="#fff" />, colors: ['#64748B', '#475569'] },
+    speak: { icon: <Volume2 size={14} color="#fff" />, colors: ['#22C55E', '#16A34A'] },
 };
 
 const SmartButtonRow = ({ buttons, onPress }: { buttons: SmartButton[]; onPress: (btn: SmartButton) => void }) => (
@@ -141,27 +141,19 @@ const WelcomeHero = ({ onPrompt, prompts }: { onPrompt: (p: string) => void; pro
             </LinearGradient>
             <Text style={[styles.heroTitle, { color: colors.text }]}>HamroAI</Text>
             <Text style={[styles.heroSub, { color: colors.textSecondary }]}>Your intelligent team operations assistant</Text>
-        <View style={styles.heroChips}>
-            {[
-                { label: '📊 Workspace summary', prompt: 'Give me a full workspace summary with overdue tasks and at-risk projects.' },
-                { label: '🔴 Overdue tasks', prompt: 'What tasks are overdue right now?' },
-                { label: '👥 Team workload', prompt: 'Who is overloaded on the team right now?' },
-                { label: '⚠️ Risk detection', prompt: 'Are there any projects at risk of delay?' },
-                { label: '✅ Create a task', prompt: 'I want to create a new task.' },
-                { label: '📁 Create a project', prompt: 'I want to create a new project.' },
-                { label: '📩 Invite member', prompt: 'I want to invite a new team member.' },
-                { label: '📋 My projects', prompt: 'Show me all my projects and their health status.' },
-            ].map((p, i) => (
-                <TouchableOpacity key={i} style={[styles.heroChip, { 
-                    backgroundColor: colors.card, 
-                    borderColor: colors.border,
-                    shadowColor: colors.shadow 
-                }]} onPress={() => onPrompt(p.prompt)} activeOpacity={0.75}>
-                    <Text style={[styles.heroChipText, { color: colors.text }]}>{p.label}</Text>
-                </TouchableOpacity>
-            ))}
+            <View style={styles.heroChips}>
+                {/* BUG-13 FIX: Use the `prompts` prop instead of a duplicate hardcoded list */}
+                {prompts.map((p, i) => (
+                    <TouchableOpacity key={i} style={[styles.heroChip, {
+                        backgroundColor: colors.card,
+                        borderColor: colors.border,
+                        shadowColor: colors.shadow
+                    }]} onPress={() => onPrompt(p.prompt)} activeOpacity={0.75}>
+                        <Text style={[styles.heroChipText, { color: colors.text }]}>{p.label}</Text>
+                    </TouchableOpacity>
+                ))}
+            </View>
         </View>
-    </View>
     );
 };
 
@@ -185,12 +177,24 @@ export default function AIAssistantScreen() {
     const [showQuickPrompts, setShowQuickPrompts] = useState(true);
 
     const { colors } = useTheme();
-    
+
     const {
         messages, isLoading, inputText, setInputText,
         sendMessage, transcribeAudio, clearMessages, stopGeneration,
         retryLastMessage, lastFailedPrompt, quickPrompts,
     } = useAIAssistant();
+
+    useEffect(() => {
+        // BUG-02 FIX: Release microphone resource when screen unmounts.
+        // Without this, if the user navigates away while recording, the
+        // Audio.Recording object is leaked and future recordings break.
+        return () => {
+            if (recording) {
+                recording.stopAndUnloadAsync().catch(() => { });
+            }
+            Speech.stop();
+        };
+    }, [recording]);
 
     useEffect(() => {
         setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 120);
@@ -369,7 +373,7 @@ export default function AIAssistantScreen() {
                                 )}
 
                                 <TouchableOpacity
-                                    style={[styles.bubble, isUser ? styles.bubbleUser : styles.bubbleAI, { 
+                                    style={[styles.bubble, isUser ? styles.bubbleUser : styles.bubbleAI, {
                                         maxWidth: width * 0.78,
                                         backgroundColor: isUser ? colors.userBubble : colors.aiBubble,
                                         borderColor: isUser ? colors.userBubble : colors.aiBubbleBorder
@@ -393,9 +397,9 @@ export default function AIAssistantScreen() {
                                             )}
                                             {!isUser && msg.content.startsWith('⚠️') && lastFailedPrompt && (
                                                 <TouchableOpacity
-                                                    style={[styles.retryBtn, { 
-                                                        backgroundColor: colors.primaryBg, 
-                                                        borderColor: colors.primary 
+                                                    style={[styles.retryBtn, {
+                                                        backgroundColor: colors.primaryBg,
+                                                        borderColor: colors.primary
                                                     }]}
                                                     onPress={retryLastMessage}
                                                     activeOpacity={0.8}
@@ -422,18 +426,18 @@ export default function AIAssistantScreen() {
                 </ScrollView>
 
                 {/* Input Bar */}
-                <View style={[styles.inputArea, { 
-    backgroundColor: colors.surface, 
-    borderTopColor: colors.border, 
-    paddingBottom: Math.max(insets.bottom, 16) + 8 
-}]}>
+                <View style={[styles.inputArea, {
+                    backgroundColor: colors.surface,
+                    borderTopColor: colors.border,
+                    paddingBottom: Math.max(insets.bottom, 16) + 8
+                }]}>
                     <View style={styles.inputRow}>
                         <TextInput
                             ref={inputRef}
-                            style={[styles.input, { 
-                                backgroundColor: colors.inputBg, 
-                                borderColor: colors.inputBorder, 
-                                color: colors.inputText 
+                            style={[styles.input, {
+                                backgroundColor: colors.inputBg,
+                                borderColor: colors.inputBorder,
+                                color: colors.inputText
                             }]}
                             placeholder={isRecording ? '🎙 Listening...' : 'Ask HamroAI anything...'}
                             placeholderTextColor={colors.inputPlaceholder}
@@ -451,9 +455,9 @@ export default function AIAssistantScreen() {
                             </View>
                         ) : (
                             <TouchableOpacity
-                                style={[styles.iconBtn, isRecording && styles.iconBtnActive, { 
-                                    backgroundColor: colors.inputBg, 
-                                    borderColor: colors.inputBorder 
+                                style={[styles.iconBtn, isRecording && styles.iconBtnActive, {
+                                    backgroundColor: colors.inputBg,
+                                    borderColor: colors.inputBorder
                                 }]}
                                 onPressIn={startRecording}
                                 onPressOut={stopRecording}
@@ -464,8 +468,8 @@ export default function AIAssistantScreen() {
                         )}
 
                         <TouchableOpacity
-                            style={[styles.sendBtn, { 
-                                backgroundColor: colors.primary, 
+                            style={[styles.sendBtn, {
+                                backgroundColor: colors.primary,
                                 borderColor: colors.primary,
                                 opacity: (!inputText.trim() || isLoading) ? 0.5 : 1
                             }]}

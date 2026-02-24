@@ -19,7 +19,7 @@ export interface Task {
     updated_at: string;
 }
 
-export function useTasks(projectId: string | undefined) {
+export function useTasks(projectId: string | undefined, userId?: string) {
     const [tasks, setTasks] = useState<Task[]>([]);
     const [isLoading, setIsLoading] = useState(true);
 
@@ -75,8 +75,9 @@ export function useTasks(projectId: string | undefined) {
         if (!projectId) return null;
 
         try {
-            const { data: { user } } = await supabase.auth.getUser();
-            if (!user) throw new Error('Not authenticated');
+            // T-01: Use userId passed in from caller (already available via useAuth context).
+            // avoids an async network round-trip on every createTask call.
+            if (!userId) throw new Error('Not authenticated');
 
             const maxPosition = Math.max(...tasks.map(t => t.position), -1);
 
@@ -85,7 +86,7 @@ export function useTasks(projectId: string | undefined) {
                 .insert({
                     ...data,
                     project_id: projectId,
-                    created_by: user.id,
+                    created_by: userId,
                     position: maxPosition + 1,
                 })
                 .select()
@@ -102,9 +103,13 @@ export function useTasks(projectId: string | undefined) {
 
     const updateTask = async (id: string, updates: Partial<Task>) => {
         try {
+            // T-02: Strip trigger-managed fields — these are kept in sync by trg_sync_task_status.
+            // Directly writing them bypasses the trigger and creates enum/custom_status_id drift.
+            const { status: _s, completed_at: _c, first_started_at: _f, ...safeUpdates } = updates as any;
+
             const { error } = await supabase
                 .from('tasks')
-                .update(updates)
+                .update(safeUpdates)
                 .eq('id', id);
 
             if (error) throw error;

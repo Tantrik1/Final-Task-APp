@@ -332,7 +332,8 @@ export default function ModalScreen() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'task_comments', filter: `task_id=eq.${id}` }, () => fetchComments())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'task_attachments', filter: `task_id=eq.${id}` }, () => fetchAttachments())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'task_links', filter: `task_id=eq.${id}` }, () => fetchLinks())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'task_sessions', filter: `task_id=eq.${id}` }, () => { })
+      // T-05 fix: correct table is 'task_work_sessions' (sessions are managed by useTaskTimer internally)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'task_work_sessions', filter: `task_id=eq.${id}` }, () => { })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [id]);
@@ -384,7 +385,10 @@ export default function ModalScreen() {
       const { data } = await supabase.from('project_statuses').select('*').eq('project_id', pid).order('position');
       const list = data || [];
       setStatuses(list);
-      if (!id || !list.find(s => s.name === statusName)) {
+      // T-04: Use id-based check instead of name-string matching
+      // If editing and current customStatusId is still valid for this project, keep it.
+      // Otherwise fall back to the default status.
+      if (!id || !list.find(s => s.id === customStatusId)) {
         const def = list.find(s => s.is_default);
         if (def) { setStatusName(def.name); setCustomStatusId(def.id); }
         else if (list.length > 0) { setStatusName(list[0].name); setCustomStatusId(list[0].id); }
@@ -524,11 +528,10 @@ export default function ModalScreen() {
     }
     setIsSaving(true);
     try {
-      // Resolve custom_status_id
+      // T-04: Resolve custom_status_id by ID first, then fallback by is_default — never by name string
       let resolvedStatusId = customStatusId;
       if (!resolvedStatusId && statuses.length > 0) {
-        const matched = statuses.find(s => s.name === statusName);
-        resolvedStatusId = matched?.id || statuses.find(s => s.is_default)?.id || statuses[0]?.id;
+        resolvedStatusId = statuses.find(s => s.is_default)?.id || statuses[0]?.id;
       }
 
       const parsedDue = dueDateInput.trim() || null;
@@ -545,12 +548,29 @@ export default function ModalScreen() {
       };
 
       if (id) {
+        // Edit mode: update task fields
         const { error } = await supabase.from('tasks').update(taskData).eq('id', id);
         if (error) throw error;
+
+        // T-03: Sync task_assignees on edit — delete old rows and re-insert current selection.
+        // The trg_sync_assigned_to trigger will keep tasks.assigned_to in sync automatically.
+        if (assigneeId) {
+          try {
+            await supabase.from('task_assignees').delete().eq('task_id', id);
+            await supabase.from('task_assignees').insert({
+              task_id: id,
+              user_id: assigneeId,
+              assigned_by: user.id,
+            });
+          } catch (_) { /* Non-critical — assigned_to field is the source of truth fallback */ }
+        } else {
+          // No assignee selected: clear task_assignees rows
+          try { await supabase.from('task_assignees').delete().eq('task_id', id); } catch (_) { }
+        }
       } else {
+        // Create mode: insert task, then insert into task_assignees
         const { data: newTask, error } = await supabase.from('tasks').insert([{ ...taskData, created_by: user.id }]).select('id').maybeSingle();
         if (error) throw error;
-        // Also insert into task_assignees for multi-assignee support
         if (newTask && assigneeId) {
           try {
             await supabase.from('task_assignees').insert({

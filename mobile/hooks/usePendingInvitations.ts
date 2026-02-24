@@ -137,6 +137,11 @@ export function usePendingInvitations() {
     const acceptInvitation = useCallback(async (invitation: PendingInvitation) => {
         if (!user) throw new Error('Not authenticated');
 
+        // INV-01: Re-validate expiry server-side before accepting (screen may have been open past expiry)
+        if (invitation.expires_at && new Date(invitation.expires_at) < new Date()) {
+            throw new Error('This invitation has expired. Please ask the workspace admin to send a new one.');
+        }
+
         // Insert into workspace_members
         const { error: memberError } = await supabase
             .from('workspace_members')
@@ -176,7 +181,10 @@ export function usePendingInvitations() {
 
         // Remove from local state
         setInvitations(prev => prev.filter(inv => inv.id !== invitation.id));
-    }, []);
+
+        // INV-02: Refresh workspaces in case state needs updating
+        await refreshWorkspaces();
+    }, [refreshWorkspaces]);
 
     return {
         invitations,

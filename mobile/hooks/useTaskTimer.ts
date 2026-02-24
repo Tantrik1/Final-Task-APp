@@ -173,25 +173,34 @@ export function useTaskTimer(taskId: string, completedStatusId?: string) {
 
     // ─── Helper: close open session ─────────────────────────────────
     const closeOpenSession = async (): Promise<number> => {
+        // BUG-07 FIX: Guard against empty taskId
+        if (!taskId) return 0;
         const openSession = stateRef.current.sessions.find(s => !s.ended_at);
         if (!openSession || !stateRef.current.currentSessionStart) return 0;
 
+        // C-02 FIX: Use atomic RPC instead of non-atomic read→add→write.
+        // close_task_session atomically: closes the session row AND increments
+        // total_work_time in a single DB transaction — no race condition.
+        if (user) {
+            const { data, error } = await supabase.rpc('close_task_session', {
+                p_task_id: taskId,
+                p_user_id: user.id,
+            });
+            if (error) {
+                console.error('[Timer] close_task_session RPC error:', error);
+                return 0;
+            }
+            return (data as number) ?? 0;
+        }
+
+        // Fallback when user is unavailable: manual session close (no work-time update)
         const now = new Date();
         const duration = Math.floor((now.getTime() - stateRef.current.currentSessionStart.getTime()) / 1000);
-
         await supabase.from('task_work_sessions').update({
             ended_at: now.toISOString(),
             duration_seconds: duration,
         }).eq('id', openSession.id);
-
-        // Update total_work_time on task
-        const { data: latest } = await supabase.from('tasks').select('total_work_time').eq('id', taskId).single();
-        const newTotal = (latest?.total_work_time || 0) + duration;
-        await supabase.from('tasks').update({
-            is_timer_running: false,
-            total_work_time: newTotal,
-        }).eq('id', taskId);
-
+        await supabase.from('tasks').update({ is_timer_running: false }).eq('id', taskId);
         return duration;
     };
 
@@ -352,18 +361,17 @@ export function useTaskTimer(taskId: string, completedStatusId?: string) {
             const session = stateRef.current.sessions.find(s => s.id === sessionId);
             if (!session) return;
 
-            // If deleting the active session, stop the timer
+            // If deleting the active session, clear the timer flag
             if (!session.ended_at) {
                 await supabase.from('tasks').update({ is_timer_running: false }).eq('id', taskId);
             }
 
-            // Subtract duration from total
-            if (session.duration_seconds) {
-                const { data: latest } = await supabase.from('tasks').select('total_work_time').eq('id', taskId).single();
-                const currentTotal = latest?.total_work_time || 0;
-                await supabase.from('tasks').update({
-                    total_work_time: Math.max(0, currentTotal - session.duration_seconds),
-                }).eq('id', taskId);
+            // C-02 FIX: Use atomic RPC to subtract duration — eliminates read-add-write race.
+            if (session.duration_seconds && session.duration_seconds > 0) {
+                await supabase.rpc('adjust_task_work_time', {
+                    p_task_id: taskId,
+                    p_delta: -session.duration_seconds,
+                });
             }
 
             await supabase.from('task_work_sessions').delete().eq('id', sessionId);

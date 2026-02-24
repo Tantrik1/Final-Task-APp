@@ -46,19 +46,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                     AsyncStorage.setItem(RECOVERY_MODE_KEY, 'true');
                 }
 
+                // AUTH-04: Clear recovery mode on successful sign-in (not just sign-out)
+                if (event === 'SIGNED_IN') {
+                    setIsRecoveryMode(false);
+                    AsyncStorage.removeItem(RECOVERY_MODE_KEY);
+                }
+
                 // Clear recovery mode on sign out
                 if (event === 'SIGNED_OUT') {
                     setIsRecoveryMode(false);
                     AsyncStorage.removeItem(RECOVERY_MODE_KEY);
+                    // BUG-11 FIX: Clear AI chat history on sign-out.
+                    AsyncStorage.getAllKeys().then(keys => {
+                        const chatKeys = keys.filter(k => k.startsWith('hamroai_conv_'));
+                        if (chatKeys.length > 0) AsyncStorage.multiRemove(chatKeys);
+                    }).catch(() => { });
                 }
             }
         );
 
-        // Initial session check
+        // AUTH-01: Use onAuthStateChange as sole source of isLoading truth.
+        // Calling setIsLoading(false) here too could cause double-navigation guard runs.
         supabase.auth.getSession().then(({ data: { session } }) => {
             setSession(session);
             setUser(session?.user ?? null);
-            setIsLoading(false);
+            // Only set loading false here if onAuthStateChange hasn't fired yet
+            setIsLoading(prev => prev ? false : prev);
         });
 
         return () => subscription.unsubscribe();
@@ -99,7 +112,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const resetPassword = useCallback(async (email: string) => {
         const { error } = await supabase.auth.resetPasswordForEmail(email, {
-            redirectTo: 'htaskmobile://auth/reset-confirm',
+            // AUTH-03: Use 'auth/reset' to match the registered Stack.Screen name in _layout.tsx
+            redirectTo: 'htaskmobile://auth/reset',
         });
 
         return { error: error as Error | null };

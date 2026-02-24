@@ -17,8 +17,11 @@ interface TaskState {
     isTimerRunning: boolean;
     isLoading: boolean;
     error: string | null;
+    // Stored user so internal actions (e.g. syncWithRealtime) don't need it passed in
+    _user: User | null;
 
     // Actions
+    setUser: (user: User | null) => void;
     toggleTimer: (taskId: string, user: User) => Promise<void>;
     stopTimer: (taskId: string, user: User) => Promise<void>;
     refreshTimer: (user: User) => Promise<void>;
@@ -31,6 +34,9 @@ export const useTaskStore = create<TaskState>((set: any, get: any) => ({
     isTimerRunning: false,
     isLoading: false,
     error: null,
+    _user: null,
+
+    setUser: (user: User | null) => set({ _user: user }),
 
     toggleTimer: async (taskId: string, user: User) => {
         if (!user) {
@@ -178,13 +184,15 @@ export const useTaskStore = create<TaskState>((set: any, get: any) => ({
     },
 
     syncWithRealtime: (payload: any, user: User) => {
-        if (!user) return;
+        // Use passed user or fall back to stored _user
+        const resolvedUser = user || get()._user;
+        if (!resolvedUser) return;
 
         const updatedTask = payload.new;
         const currentState = get();
 
         // If this update affects the current user's timer
-        if (updatedTask.assigned_to === user.id || updatedTask.created_by === user.id) {
+        if (updatedTask.assigned_to === resolvedUser.id || updatedTask.created_by === resolvedUser.id) {
             if (updatedTask.is_timer_running) {
                 // Task started running - check if it's the active one
                 if (currentState.activeTimer?.task_id === updatedTask.id) {
@@ -198,8 +206,8 @@ export const useTaskStore = create<TaskState>((set: any, get: any) => ({
                         isTimerRunning: true,
                     });
                 } else {
-                    // New timer started, fetch full details
-                    get().refreshTimer();
+                    // New timer started, fetch full details — use resolvedUser so refreshTimer gets a valid user
+                    get().refreshTimer(resolvedUser);
                 }
             } else {
                 // Timer stopped

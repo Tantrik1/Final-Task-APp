@@ -124,54 +124,20 @@ export function useProjectStatuses(projectId: string | undefined) {
 
     const deleteStatus = async (id: string) => {
         try {
-            // Check how many tasks use this status
-            const { count: taskCount, error: countError } = await supabase
-                .from('tasks')
-                .select('id', { count: 'exact', head: true })
-                .eq('custom_status_id', id);
+            // P-03: Use atomic RPC — reassigns tasks and deletes status in a single transaction.
+            // Replaces the previous 3-step count → reassign → delete which had a race window.
+            const fallbackStatus = statuses.find(s => s.id !== id && s.is_default)
+                ?? statuses.find(s => s.id !== id);
 
-            if (countError) throw countError;
-
-            // If tasks exist, reassign them to the default status
-            if (taskCount && taskCount > 0) {
-                const defaultStatus = getDefaultStatus();
-
-                // Prevent deleting if it's the only status or the default status
-                if (!defaultStatus || defaultStatus.id === id) {
-                    // Find any other status to use as fallback
-                    const fallbackStatus = statuses.find(s => s.id !== id);
-
-                    if (!fallbackStatus) {
-                        Alert.alert(
-                            'Cannot delete',
-                            'This is the only status. Create another before deleting.'
-                        );
-                        return false;
-                    }
-
-                    // Reassign tasks to fallback
-                    const { error: reassignError } = await supabase
-                        .from('tasks')
-                        .update({ custom_status_id: fallbackStatus.id })
-                        .eq('custom_status_id', id);
-
-                    if (reassignError) throw reassignError;
-                } else {
-                    // Reassign tasks to default status
-                    const { error: reassignError } = await supabase
-                        .from('tasks')
-                        .update({ custom_status_id: defaultStatus.id })
-                        .eq('custom_status_id', id);
-
-                    if (reassignError) throw reassignError;
-                }
+            if (!fallbackStatus) {
+                Alert.alert('Cannot delete', 'This is the only status. Create another before deleting.');
+                return false;
             }
 
-            // Now delete the status
-            const { error } = await supabase
-                .from('project_statuses')
-                .delete()
-                .eq('id', id);
+            const { error } = await supabase.rpc('delete_status_and_reassign', {
+                p_status_id: id,
+                p_fallback_id: fallbackStatus.id,
+            });
 
             if (error) throw error;
             return true;
@@ -184,23 +150,23 @@ export function useProjectStatuses(projectId: string | undefined) {
 
     const reorderStatuses = async (reorderedStatuses: ProjectStatus[]) => {
         try {
-            // Optimistically update local state
+            // Optimistically update local state immediately
             setStatuses(reorderedStatuses);
 
-            // Update positions in database
-            const updates = reorderedStatuses.map((status, index) =>
-                supabase
-                    .from('project_statuses')
-                    .update({ position: index })
-                    .eq('id', status.id)
-            );
+            // P-02: Use atomic RPC — updates all positions in a single PL/pgSQL loop.
+            // Replaces the previous N parallel UPDATE queries via Promise.all, which
+            // could result in partially-applied positions if any request failed.
+            const { error } = await supabase.rpc('reorder_project_statuses', {
+                p_project_id: projectId,
+                p_ordered_ids: reorderedStatuses.map(s => s.id),
+            });
 
-            await Promise.all(updates);
+            if (error) throw error;
             return true;
         } catch (error: any) {
             console.error('Error reordering statuses:', error);
             Alert.alert('Error', error.message);
-            fetchStatuses(); // Revert on error
+            fetchStatuses(); // Revert optimistic update on error
             return false;
         }
     };

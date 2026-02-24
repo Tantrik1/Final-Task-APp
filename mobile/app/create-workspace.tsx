@@ -138,14 +138,51 @@ export default function CreateWorkspaceScreen() {
         if (!canSubmit) return;
         setIsLoading(true);
         try {
+            // WS-03: Uniqueness check — prevent duplicate workspace names for this user
+            const { count, error: checkError } = await supabase
+                .from('workspaces')
+                .select('id', { count: 'exact', head: true })
+                .ilike('name', name.trim())
+                .eq('created_by', user?.id ?? '');
+
+            if (checkError) throw checkError;
+            if (count && count > 0) {
+                Alert.alert(
+                    'Name Already Used',
+                    `You already have a workspace called "${name.trim()}". Please choose a different name.`
+                );
+                return;
+            }
+
             const { data, error } = await createWorkspace(name.trim(), description.trim() || undefined);
             if (error) throw error;
             if (data) {
-                // Upload logo if selected
+                // WS-02: Upload logo and surface failure to user with retry/continue options
                 if (logoUri) {
                     const logoUrl = await uploadLogo(data.id);
                     if (logoUrl) {
                         await supabase.from('workspaces').update({ logo_url: logoUrl }).eq('id', data.id);
+                    } else {
+                        // Logo upload silently failed — ask user if they want to retry
+                        await new Promise<void>((resolve) => {
+                            Alert.alert(
+                                'Logo Upload Failed',
+                                'The workspace was created but the logo could not be uploaded. You can add it later from workspace settings.',
+                                [
+                                    {
+                                        text: 'Retry Upload',
+                                        onPress: async () => {
+                                            const retryUrl = await uploadLogo(data.id);
+                                            if (retryUrl) {
+                                                await supabase.from('workspaces').update({ logo_url: retryUrl }).eq('id', data.id);
+                                            }
+                                            resolve();
+                                        },
+                                    },
+                                    { text: 'Continue Without Logo', style: 'cancel', onPress: () => resolve() },
+                                ]
+                            );
+                        });
                     }
                 }
                 setCurrentWorkspaceId(data.id);

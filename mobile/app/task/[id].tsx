@@ -503,8 +503,8 @@ export default function TaskDetailScreen() {
 
       {/* ─── Custom Header ─── */}
       <View style={[
-        styles.header, 
-        { 
+        styles.header,
+        {
           backgroundColor: colors.card,
           borderBottomColor: colors.border,
           shadowColor: colors.shadow,
@@ -512,15 +512,15 @@ export default function TaskDetailScreen() {
           shadowOpacity: 0.1,
           shadowRadius: 8,
           elevation: 3,
-          paddingTop: insets.top + 4 
+          paddingTop: insets.top + 4
         }
       ]}>
         <View style={styles.headerLeft}>
-          <TouchableOpacity 
-            onPress={() => router.back()} 
+          <TouchableOpacity
+            onPress={() => router.back()}
             style={[
-              styles.headerBtn, 
-              { 
+              styles.headerBtn,
+              {
                 backgroundColor: colors.surface,
                 borderRadius: 12,
                 padding: 8,
@@ -530,7 +530,7 @@ export default function TaskDetailScreen() {
                 shadowRadius: 2,
                 elevation: 1,
               }
-            ]} 
+            ]}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
             <ArrowLeft size={22} color={colors.text} />
@@ -544,10 +544,10 @@ export default function TaskDetailScreen() {
           {/* ─── Advanced Timer Widget ─── */}
           {!timerLoading && (() => {
             const cfg = {
-              idle:      { bg: colors.surface,  border: colors.border,  dotColor: colors.textTertiary, textColor: colors.textTertiary, label: 'Start' },
-              running:   { bg: '#052E16',        border: '#16A34A',      dotColor: '#4ADE80',           textColor: '#4ADE80',           label: 'Pause' },
-              paused:    { bg: '#431407',        border: '#EA580C',      dotColor: '#FB923C',           textColor: '#FB923C',           label: 'Resume' },
-              completed: { bg: '#052E16',        border: '#16A34A',      dotColor: '#4ADE80',           textColor: '#4ADE80',           label: 'Done' },
+              idle: { bg: colors.surface, border: colors.border, dotColor: colors.textTertiary, textColor: colors.textTertiary, label: 'Start' },
+              running: { bg: '#052E16', border: '#16A34A', dotColor: '#4ADE80', textColor: '#4ADE80', label: 'Pause' },
+              paused: { bg: '#431407', border: '#EA580C', dotColor: '#FB923C', textColor: '#FB923C', label: 'Resume' },
+              completed: { bg: '#052E16', border: '#16A34A', dotColor: '#4ADE80', textColor: '#4ADE80', label: 'Done' },
             }[timerPhase] ?? { bg: colors.surface, border: colors.border, dotColor: colors.textTertiary, textColor: colors.textTertiary, label: 'Start' };
 
             const timeStr = timerPhase === 'running'
@@ -559,17 +559,23 @@ export default function TaskDetailScreen() {
                 {/* Main pill: tap to play/pause/resume */}
                 <Pressable
                   onPress={async () => {
-                    if (timerPhase === 'running') { 
-                        await stopTimerGlobal(id, user);
-                        handlePauseTimer(); 
+                    if (timerPhase === 'running') {
+                      // M-01 FIX: stopTimerGlobal (RPC) already atomically closes
+                      // the session and updates total_work_time. Do NOT call
+                      // handlePauseTimer() / pauseTimer() / closeOpenSession() after
+                      // this — it would attempt a second close on an already-closed
+                      // session, causing a wasted roundtrip and potential data skew.
+                      await stopTimerGlobal(id, user);
+                      await timerRefresh();  // sync local timer state machine
+                      fetchTask();           // refresh task bubble / status UI
                     }
-                    else if (timerPhase === 'paused') { 
-                        await toggleTimer(id, user);
-                        fetchTask(); 
+                    else if (timerPhase === 'paused') {
+                      await toggleTimer(id, user);
+                      fetchTask();
                     }
-                    else if (timerPhase !== 'completed') { 
-                        await toggleTimer(id, user);
-                        fetchTask(); 
+                    else if (timerPhase !== 'completed') {
+                      await toggleTimer(id, user);
+                      fetchTask();
                     }
                   }}
                   disabled={timerPhase === 'completed'}
@@ -604,10 +610,10 @@ export default function TaskDetailScreen() {
                 {/* Stop button — only when running or paused */}
                 {(timerPhase === 'running' || timerPhase === 'paused') && (
                   <Pressable
-                    onPress={async () => { 
-                        await stopTimerGlobal(id, user);
-                        await stopTimer(); 
-                        fetchTask(); 
+                    onPress={async () => {
+                      await stopTimerGlobal(id, user);
+                      await stopTimer();
+                      fetchTask();
                     }}
                     style={({ pressed }) => [
                       styles.timerStopBtn,
@@ -622,10 +628,10 @@ export default function TaskDetailScreen() {
             );
           })()}
 
-          <TouchableOpacity 
+          <TouchableOpacity
             style={[
-              styles.headerBtn, 
-              { 
+              styles.headerBtn,
+              {
                 backgroundColor: colors.surface,
                 borderRadius: 12,
                 padding: 8,
@@ -635,7 +641,7 @@ export default function TaskDetailScreen() {
                 shadowRadius: 2,
                 elevation: 1,
               }
-            ]} 
+            ]}
             onPress={() => setShowOptionsMenu(true)}
           >
             <MoreVertical size={22} color={colors.text} />

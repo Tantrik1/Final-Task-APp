@@ -44,17 +44,8 @@ export default function RootLayout() {
     if (error) throw error;
   }, [error]);
 
-  useEffect(() => {
-    async function prepare() {
-      try {
-        await SplashScreen.preventAutoHideAsync();
-      } catch (e) {
-        // Silently handle if already shown
-      }
-    }
-    prepare();
-  }, []);
-
+  // BUG-05 FIX: SplashScreen.preventAutoHideAsync() is already called at module level (line 1).
+  // Calling it again here logged a warning and caused potential flicker.
   useEffect(() => {
     if (loaded) {
       SplashScreen.hideAsync();
@@ -84,13 +75,16 @@ function RootLayoutNav() {
 
   // Initialize timer store with user
   useTimerInit();
-  const [isCheckingProfile, setIsCheckingProfile] = useState(false);
+  // BUG-06 FIX: Use useRef instead of useState for isCheckingProfile.
+  // useState would require adding it to the useEffect deps, creating a stale
+  // closure risk and potential double-navigation. A ref is always current.
+  const isCheckingProfileRef = useRef(false);
   const [showPasswordPrompt, setShowPasswordPrompt] = useState(false);
   const lastCheckedUserId = useRef<string | null>(null);
 
   useEffect(() => {
     const handleNavigation = async () => {
-      if (authLoading || isCheckingProfile) return;
+      if (authLoading || isCheckingProfileRef.current) return;
 
       const inAuthGroup = segment0 === "auth";
       const inInvitation = segment0 === "invitation";
@@ -116,7 +110,7 @@ function RootLayoutNav() {
         }
 
         // Authenticated - Check profile, invitations, and memberships
-        setIsCheckingProfile(true);
+        isCheckingProfileRef.current = true;
         try {
           // 1. Check for needs_password_reset flag
           const { data: profile } = await supabase
@@ -167,7 +161,7 @@ function RootLayoutNav() {
           lastCheckedUserId.current = user.id;
           if (inAuthGroup) router.replace("/(tabs)");
         } finally {
-          setIsCheckingProfile(false);
+          isCheckingProfileRef.current = false;
         }
       }
     };
@@ -208,6 +202,9 @@ function RootLayoutNav() {
             <Stack.Screen name="menu" options={{ headerShown: false, animation: 'fade' }} />
             <Stack.Screen name="activity-log" options={{ headerShown: false, animation: 'slide_from_right' }} />
             <Stack.Screen name="ai-assistant" options={{ headerShown: false, animation: 'slide_from_bottom', gestureEnabled: true, fullScreenGestureEnabled: true }} />
+            {/* BUG-14/15 FIX: Register missing routes explicitly for consistent animation and gesture behaviour */}
+            <Stack.Screen name="members" options={{ headerShown: false, animation: 'slide_from_right', gestureEnabled: true, fullScreenGestureEnabled: true }} />
+            <Stack.Screen name="create-workspace" options={{ headerShown: false, animation: 'slide_from_right', gestureEnabled: true, fullScreenGestureEnabled: true }} />
             <Stack.Screen name="modal" options={{ presentation: 'modal', gestureEnabled: true, fullScreenGestureEnabled: true }} />
           </Stack>
         </WorkspaceProvider>

@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { useAuth } from './useAuth';
-import { useRefreshTimer } from '@/stores/useTaskStore';
+import { useRefreshTimer, useTaskStore } from '@/stores/useTaskStore';
 
 /**
  * Hook to initialize timer store with user and set up initial state.
@@ -13,12 +13,16 @@ export function useTimerInit() {
     const { user } = useAuth();
     // Stable selector — returns a single function reference, never a new object
     const refreshTimer = useRefreshTimer();
+    const setUser = useTaskStore((state: any) => state.setUser);
 
     useEffect(() => {
+        // Keep the store's internal _user in sync so syncWithRealtime can
+        // call refreshTimer without needing the caller to pass `user`.
+        setUser(user ?? null);
         if (user) {
             // Initialize timer state when user logs in
             refreshTimer(user);
         }
-        // refreshTimer is a Zustand action: same reference across renders (store functions are stable)
-    }, [user, refreshTimer]);
+        // refreshTimer and setUser are Zustand actions: stable references across renders
+    }, [user, refreshTimer, setUser]);
 }

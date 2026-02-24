@@ -41,9 +41,9 @@ import { CreateTaskModal } from '@/components/CreateTaskModal';
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 const CATEGORY_CONFIG = {
-    todo:      { color: '#3B82F6', bg: '#EFF6FF', label: 'Todo',      short: 'TODO', order: 0 },
-    active:    { color: '#F97316', bg: '#FFF7ED', label: 'Active',    short: 'ACT', order: 1 },
-    done:      { color: '#22C55E', bg: '#F0FDF4', label: 'Done',      short: 'DONE', order: 2 },
+    todo: { color: '#3B82F6', bg: '#EFF6FF', label: 'Todo', short: 'TODO', order: 0 },
+    active: { color: '#F97316', bg: '#FFF7ED', label: 'Active', short: 'ACT', order: 1 },
+    done: { color: '#22C55E', bg: '#F0FDF4', label: 'Done', short: 'DONE', order: 2 },
     cancelled: { color: '#EF4444', bg: '#FEF2F2', label: 'Cancelled', short: 'CXL', order: 3 },
 } as const;
 
@@ -225,11 +225,18 @@ export default function ProjectDetail() {
 
     // Stats
     const stats = useMemo(() => {
-        const total = tasks.length;
-        const done = tasks.filter(t => {
+        // P-04: Exclude cancelled tasks from progress — they are removed from scope,
+        // so they should neither count toward the denominator nor the done count.
+        const activeTasks = tasks.filter(t => {
+            if (!t.custom_status_id) return true; // no status = treat as active
+            const s = projectStatuses.find(s => s.id === t.custom_status_id);
+            return s?.category !== 'cancelled';
+        });
+        const total = activeTasks.length;
+        const done = activeTasks.filter(t => {
             if (!t.custom_status_id) return false;
             const s = projectStatuses.find(s => s.id === t.custom_status_id);
-            return s?.category === 'done' || s?.category === 'cancelled' || s?.is_completed || false;
+            return s?.category === 'done' || s?.is_completed || false;
         }).length;
         const progress = total > 0 ? Math.round((done / total) * 100) : 0;
         return { total, done, progress };
@@ -384,31 +391,10 @@ export default function ProjectDetail() {
                 }
             }
 
-            // 5. Sync tasks whose status category changed
-            // The DB trigger only fires on custom_status_id change, so we need to
-            // manually sync tasks when the status *itself* moved categories.
-            const origStatuses = projectStatuses; // snapshot before edit
-            for (const s of editStatuses) {
-                if (s._isNew) continue; // new statuses have no tasks yet
-                const orig = origStatuses.find((o: any) => o.id === s.id);
-                if (!orig || orig.category === s.category) continue; // category didn't change
-
-                const nowCompleted = s.category === 'done' || s.category === 'cancelled';
-                const enumStatus = s.category === 'todo' ? 'todo' : s.category === 'active' ? 'in_progress' : 'done';
-
-                if (nowCompleted) {
-                    await supabase
-                        .from('tasks')
-                        .update({ status: enumStatus, completed_at: new Date().toISOString() })
-                        .eq('custom_status_id', s.id)
-                        .is('completed_at', null);
-                } else {
-                    await supabase
-                        .from('tasks')
-                        .update({ status: enumStatus, completed_at: null })
-                        .eq('custom_status_id', s.id);
-                }
-            }
+            // 5. Note: we do NOT directly write tasks.status / completed_at here.
+            // The trg_sync_task_status trigger will keep those fields in sync
+            // automatically the next time any task's custom_status_id is updated.
+            // Directly writing tasks.status bypasses the trigger and creates inconsistency.
 
             setProject({ ...project, name: editName.trim(), description: editDescription.trim() || null, color: editColor });
             setShowEditModal(false);
@@ -478,11 +464,11 @@ export default function ProjectDetail() {
         return (
             <View style={[styles.container, styles.center, { backgroundColor: colors.background, paddingTop: insets.top }]}>
                 <Text style={[styles.errorText, { color: colors.text }]}>Project not found</Text>
-                <TouchableOpacity 
-                    onPress={() => router.back()} 
+                <TouchableOpacity
+                    onPress={() => router.back()}
                     style={[
-                        styles.backBtn, 
-                        { 
+                        styles.backBtn,
+                        {
                             backgroundColor: colors.primary,
                             shadowColor: colors.shadowColored,
                             shadowOffset: { width: 0, height: 2 },
